@@ -6,7 +6,7 @@
  * （SPEC §E.8 T2 —— 3D 目录内不得出现 hex）。
  */
 import { CircleGeometry, Mesh, TorusGeometry } from 'three';
-import { DECOR_CLAY, DECOR_CREAM, BOOK_COLORS } from './content-colors';
+import { DECOR_CERAMIC, DECOR_CLAY, DECOR_CREAM, BOOK_COLORS } from './content-colors';
 import type { FurnSpec } from './shared';
 import { blob, box, cyl, fronts, lathe, legs, pull, rbox, rod, tableLamp, vase } from '../primitives';
 
@@ -142,7 +142,7 @@ function storageCabinet(s: FurnSpec, type: 'wardrobe' | 'cabinet' | 'shoecab'): 
       rbox(w + 0.01, 0.025, d, fm.woodM(colors.dark(c)), 0, h, 0, 0.006),
       rbox(0.22, 0.015, 0.14, fm.woodM(colors.palette.wood.walnut), -w * 0.25, h + 0.025, 0, 0.006),
     );
-    vase(g, w * 0.28, h + 0.025, -0.03, 0.05, 0.2, colors.palette.surface.cap, R, fm);
+    vase(g, w * 0.28, h + 0.025, -0.03, 0.05, 0.2, DECOR_CERAMIC, R, fm);
     return;
   }
   const h = 0.85;

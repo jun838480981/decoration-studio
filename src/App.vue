@@ -1,288 +1,348 @@
 <script setup lang="ts">
 /**
- * 应用外壳（**t3 骨架，不是业务视图**）。
+ * 应用外壳（**t2 一次性装配**，SPEC §C.1 / §F.2；DOM 顺序对齐原 `装修设计.html` L257-410）。
  *
- * 作用只有三个：
- * 1. 证明主题令牌链路可用：切换预设 → 写 `--ds-*` → 页面即时换肤（并显示 `resolve()` 的字面值）；
- * 2. 把三路下游的**入口占位**摆在台面上（2D / 3D / 亮点），方便 reviewer 核对契约是否就位；
- * 3. 演示 2D↔3D 切换的端口契约（3D 未实现时给出明确提示，而不是静默失败）。
+ * 布局（原 `.app` 网格 L21-23）：
+ * ```
+ * <header>                       ← AppHeader（含 ToolBar 插槽 + 亮点入口插槽）
+ * <aside class="lib">            ← FurnitureLibrary（宽屏可收起 / 窄屏抽屉）
+ * <main class="stage">           ← PlanCanvas（2D）+ scene3d 挂载位 + 比例尺 + 模式提示 + SelectionFab
+ * <aside class="right">          ← PropertyPanel
+ * <footer>                       ← 坐标 / 比例 / 悬停 / 提示
+ * ```
  *
- * ⛔ 业务视图（画布、图例、面板、弹窗）属于 t4/t5/t6，不要写在这里。
+ * 跨特性挂载位（**契约见 `composables/useViewMounts.ts`**）：
+ * | 挂载位 | 位置 | 归属 |
+ * | --- | --- | --- |
+ * | `scene3d` | `<main>` 内、`PlanCanvas` 之后 | scene3d-dev（t5） |
+ * | `extras-toolbar` | `<AppHeader>` 的 `#extras` 插槽（主题/语言之前） | features-dev（t6） |
+ * | `extras-overlay` | `<main>` 之后、`ToastHost` 之前 | features-dev（t6） |
+ *
+ * 传参（挂载位组件按需声明，多余项落到 attrs 不报错）：
+ * - `getSvg: () => SVGSVGElement | null`（2D 画布节点，导出用；等价 `svg[data-plan-canvas]`）
+ * - `resolveDrop: (clientX, clientY) => {x,y,s} | null`（家具库拖放落点）
+ * - `fit: () => void`（适应窗口）
+ * - `getStage: () => HTMLElement | null`（舞台节点）
+ *
+ * ⛔ 本文件不写业务逻辑；⛔ 不 import `features/scene3d/**` 或 `features/extras/**`（它们并行开发中，
+ * 由各自模块顶层 `registerViewMount()` 注册，见 `main.ts` 的注释）。
  */
-import { computed } from 'vue';
-import { EXTRAS_ENTRYPOINTS } from '@/features/extras';
-import { PLAN_LAYER_ORDER } from '@/features/plan2d';
-import { SCENE_THEME_REACTIVE_FIELDS } from '@/features/scene3d';
+import { computed, ref } from 'vue';
+import AppHeader from '@/components/AppHeader.vue';
+import ToolBar from '@/components/ToolBar.vue';
+import FurnitureLibrary from '@/components/FurnitureLibrary.vue';
+import PropertyPanel from '@/components/PropertyPanel.vue';
+import PlanLibraryModal from '@/components/PlanLibraryModal.vue';
+import SelectionFab from '@/components/SelectionFab.vue';
+import ToastHost from '@/components/ToastHost.vue';
+import ConfirmDialog from '@/components/dialogs/ConfirmDialog.vue';
+import PromptDialog from '@/components/dialogs/PromptDialog.vue';
+import PlanCanvas from '@/features/plan2d/PlanCanvas.vue';
+import { useViewMounts } from '@/composables/useViewMounts';
+import { closePlanLibrary, overlays } from '@/composables/useOverlays';
 import { useUiStore } from '@/stores/ui';
-import { PLAN_TOKEN_NAMES, THEME_TOKEN_NAMES, UI_TOKEN_NAMES } from '@/theme/tokens';
+import { usePlanStore } from '@/stores/plan';
 import { useTheme } from '@/theme/useTheme';
+import { stageSize } from '@/composables/useResizeFit';
 
-const { presetId, presets, setPreset, resolve, currentPreset } = useTheme();
 const ui = useUiStore();
+const plan = usePlanStore();
+const { resolve } = useTheme();
+const mounts = useViewMounts();
 
-const uiTokens = computed(() => [...UI_TOKEN_NAMES]);
-const planTokens = computed(() => [...PLAN_TOKEN_NAMES]);
-const totalTokens = computed(() => THEME_TOKEN_NAMES.length);
+const canvas = ref<InstanceType<typeof PlanCanvas> | null>(null);
+const stageEl = ref<HTMLElement | null>(null);
+const pointer = ref({ x: 0, y: 0, roomId: null as string | null });
 
-async function toggleView(): Promise<void> {
-  await ui.setViewMode(ui.is3D ? '2d' : '3d');
+const Scene3D = computed(() => mounts.scene3d);
+const ExtrasToolbar = computed(() => mounts['extras-toolbar']);
+const ExtrasOverlay = computed(() => mounts['extras-overlay']);
+
+/** 屏幕 → 户型坐标（家具库拖放用；3D 侧由 `Scene3DApi.groundAt` 负责） */
+function resolveDrop(clientX: number, clientY: number): { x: number; y: number; s: number } | null {
+  const point = canvas.value?.toMM(clientX, clientY) ?? null;
+  if (!point) return null;
+  return { x: point.x, y: point.y, s: ui.view.s };
 }
+
+function getSvg(): SVGSVGElement | null {
+  return canvas.value?.svg ?? null;
+}
+
+function getStage(): HTMLElement | null {
+  return stageEl.value;
+}
+
+function fit(): void {
+  canvas.value?.fit();
+}
+
+/** 挂载位通用 props（见文件头注释的契约表） */
+const mountProps = computed(() => ({
+  getSvg,
+  resolveDrop,
+  getStage,
+  fit,
+}));
+
+const hoverLabel = computed(() => {
+  const id = pointer.value.roomId;
+  if (!id) return '';
+  const room = plan.rooms.find((item) => item.id === id);
+  if (!room) return '';
+  const override = plan.levelData;
+  void override;
+  return room.name;
+});
+
+const modeHint = computed(() => {
+  if (ui.tool === 'measure') return '点击两点（或按住拖动）测量距离 · 靠近墙面自动吸附 · Shift 锁定水平/垂直 · Esc 取消';
+  if (ui.tool === 'demolish') return '点击灰色非承重墙标记拆除，再次点击恢复 · 黑色承重墙不可拆';
+  if (ui.edit.on) return '结构编辑：画墙 / 画房间 / 加门窗 / 删除 · 正交默认开启（Alt 自由角度）· Esc 取消当前绘制';
+  return '';
+});
+
+const scaleBar = computed(() => ui.scaleBar);
 </script>
 
 <template>
-  <div class="shell">
-    <header class="shell__header">
-      <div class="brand">
-        <b>装修设计工作台</b>
-        <span>decoration-studio · Vue3 + Vite + TS 骨架（t3）</span>
+  <div class="app" :class="{ 'app--hide-lib': ui.panes.hideLib, 'app--hide-panel': ui.panes.hidePanel }">
+    <AppHeader class="app__header">
+      <template #toolbar>
+        <ToolBar />
+      </template>
+      <template #extras>
+        <component :is="ExtrasToolbar" v-if="ExtrasToolbar" v-bind="mountProps" />
+      </template>
+    </AppHeader>
+
+    <aside v-show="!ui.panes.hideLib" class="app__lib" aria-label="家具库">
+      <FurnitureLibrary :resolve-drop="resolveDrop" :get-stage="getStage" />
+    </aside>
+
+    <main ref="stageEl" class="stage">
+      <PlanCanvas ref="canvas" :class="{ 'stage__canvas--hidden': ui.is3D }" @pointer="pointer = $event" />
+
+      <!-- 3D 视口挂载位（scene3d-dev 注册；未注册时给出明确提示，而不是静默空白） -->
+      <div class="stage__view3d" :class="{ 'stage__view3d--on': ui.is3D }">
+        <component :is="Scene3D" v-if="Scene3D" v-bind="mountProps" />
+        <p v-else class="stage__placeholder">3D 模块尚未就绪（`features/scene3d/Scene3D.vue` 未注册）</p>
       </div>
 
-      <div class="chips" role="group" aria-label="主题预设">
-        <button
-          v-for="preset in presets"
-          :key="preset.id"
-          type="button"
-          class="chip"
-          :class="{ 'chip--on': preset.id === presetId }"
-          :aria-pressed="preset.id === presetId"
-          :title="`${preset.zh} / ${preset.en}`"
-          @click="setPreset(preset.id)"
-        >
-          {{ preset.zh }}
-        </button>
+      <div class="scalebar" :class="{ 'scalebar--hidden': ui.is3D }" aria-hidden="true">
+        <span>{{ scaleBar.label }}</span>
+        <div class="scalebar__bar" :style="{ width: `${scaleBar.len}px` }" />
       </div>
 
-      <button type="button" class="chip" :aria-pressed="ui.is3D" @click="toggleView">
-        {{ ui.is3D ? '返回 2D' : '切到 3D' }}
-      </button>
+      <div v-if="modeHint" class="modehint">{{ modeHint }}</div>
 
-      <span class="spacer" />
-      <span class="muted">当前预设：{{ currentPreset.zh }}（<code>{{ presetId }}</code>）</span>
-    </header>
-
-    <main class="shell__main">
-      <section class="card">
-        <h2>2D 平面 · 契约就位</h2>
-        <p class="muted">
-          图层顺序与重建矩阵已冻结（SPEC §F.2）；实现归
-          <code>features/plan2d/**</code>（t4）。
-        </p>
-        <ol class="list">
-          <li v-for="layer in PLAN_LAYER_ORDER" :key="layer">
-            <code>{{ layer }}</code>
-          </li>
-        </ol>
-      </section>
-
-      <section class="card">
-        <h2>3D 场景 · 主题联动</h2>
-        <p class="muted">
-          材质基色唯一来源：<code>theme/material-palette.ts</code>；以下项必须随主题变化（SPEC §E.8
-          T3），实现归 <code>features/scene3d/**</code>（t5）。
-        </p>
-        <ul class="list list--inline">
-          <li v-for="field in SCENE_THEME_REACTIVE_FIELDS" :key="field">
-            <code>{{ field }}</code>
-          </li>
-        </ul>
-      </section>
-
-      <section class="card">
-        <h2>亮点功能 · 入口预留</h2>
-        <p class="muted">P0/P1 的实现归 <code>features/extras/**</code>（t6）；依赖已按 SPEC §H.1 收敛。</p>
-        <ul class="list list--inline">
-          <li v-for="entry in EXTRAS_ENTRYPOINTS.components" :key="entry">
-            <code>{{ entry }}</code>
-          </li>
-        </ul>
-      </section>
-
-      <section class="card card--wide">
-        <h2>主题令牌（{{ totalTokens }} 项 × 3 套预设）</h2>
-        <p class="muted">
-          色值唯一来源：<code>src/theme/tokens.ts</code>。下排展示的是
-          <code>theme.resolve()</code> 的**字面值**（SVG/导出/3D 用的就是这个）。
-        </p>
-
-        <h3>UI 语义层（{{ uiTokens.length }}）</h3>
-        <div class="swatches">
-          <div v-for="name in uiTokens" :key="name" class="swatch">
-            <span class="swatch__dot" :style="{ background: resolve(name) }" />
-            <span class="swatch__name">{{ name }}</span>
-            <span class="swatch__hex">{{ resolve(name) }}</span>
-          </div>
-        </div>
-
-        <h3>2D 图纸层（{{ planTokens.length }}）</h3>
-        <div class="swatches">
-          <div v-for="name in planTokens" :key="name" class="swatch">
-            <span class="swatch__dot" :style="{ background: resolve(name) }" />
-            <span class="swatch__name">{{ name }}</span>
-            <span class="swatch__hex">{{ resolve(name) }}</span>
-          </div>
-        </div>
-      </section>
+      <SelectionFab />
     </main>
 
-    <footer class="shell__footer">
-      <span class="muted"
-        >骨架与主题层由 t3 交付；2D/3D/亮点分别由 t4/t5/t6 实现。命令见 README（含 pwsh 不可用时的替代路径）。</span
-      >
+    <aside v-show="!ui.panes.hidePanel" class="app__panel" aria-label="属性面板">
+      <PropertyPanel />
+    </aside>
+
+    <footer class="app__footer">
+      <span>X <b>{{ pointer.x || '—' }}</b></span>
+      <span>Y <b>{{ pointer.y || '—' }}</b></span>
+      <span>当前比例 <b>{{ ui.ratioLabel }}</b></span>
+      <span class="app__hover">{{ hoverLabel }}</span>
+      <span class="spacer" />
+      <span class="app__tip">{{ plan.plan.name }}{{ plan.isMulti ? ` · ${plan.levelName}` : '' }}</span>
     </footer>
+
+    <PlanLibraryModal v-if="overlays.planLibrary" @close="closePlanLibrary()" />
+
+    <!-- 亮点弹层挂载位（features-dev 注册） -->
+    <component :is="ExtrasOverlay" v-if="ExtrasOverlay" v-bind="mountProps" />
+
+    <ConfirmDialog />
+    <PromptDialog />
+    <ToastHost />
+
+    <!-- 主题令牌变化时刷新比例尺等派生值（`resolve` 的依赖由各图层自行 watch） -->
+    <span hidden>{{ resolve('canvas') }}{{ stageSize.w }}</span>
   </div>
 </template>
 
 <style scoped>
-.shell {
+.app {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-columns: 236px minmax(0, 1fr) 300px;
+  grid-template-rows: auto minmax(0, 1fr) 30px;
   height: 100vh;
   height: 100dvh;
-  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
-    env(safe-area-inset-left);
+  background: var(--ds-bg);
+  color: var(--ds-text);
 }
 
-.shell__header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
-  padding: 10px 16px;
+.app__header {
+  grid-column: 1 / -1;
+}
+
+.app__lib {
+  min-height: 0;
+  border-right: 1px solid var(--ds-border);
   background: var(--ds-surface);
-  border-bottom: 1px solid var(--ds-border);
+  overflow: hidden;
 }
 
-.brand {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.25;
+.app__panel {
+  min-height: 0;
+  border-left: 1px solid var(--ds-border);
+  background: var(--ds-surface);
+  overflow: hidden;
 }
 
-.brand b {
-  font-size: 15px;
-  letter-spacing: 0.5px;
+.app--hide-lib {
+  grid-template-columns: 0 minmax(0, 1fr) 300px;
 }
 
-.brand span {
+.app--hide-panel {
+  grid-template-columns: 236px minmax(0, 1fr) 0;
+}
+
+.app--hide-lib.app--hide-panel {
+  grid-template-columns: 0 minmax(0, 1fr) 0;
+}
+
+.stage {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--ds-canvas);
+}
+
+.stage__canvas--hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.stage__view3d {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.45s ease, visibility 0s linear 0.45s;
+}
+
+.stage__view3d--on {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.45s ease;
+}
+
+.stage__placeholder {
+  position: absolute;
+  inset: auto 0 50% 0;
+  margin: 0;
+  text-align: center;
   color: var(--ds-text-muted);
   font-size: 12px;
 }
 
-.chips {
-  display: flex;
-  gap: 4px;
-  padding: 2px;
+.scalebar {
+  position: absolute;
+  left: 14px;
+  bottom: 12px;
+  padding: 6px 10px;
   border: 1px solid var(--ds-border-strong);
   border-radius: 8px;
+  background: var(--ds-surface);
+  font-size: 12px;
+  pointer-events: none;
+  transition: opacity 0.3s;
 }
 
-.chip {
-  border: 1px solid transparent;
-  background: transparent;
+.scalebar--hidden {
+  opacity: 0;
 }
 
-.chip--on {
-  background: var(--ds-accent-soft);
-  color: var(--ds-accent);
-  border-color: var(--ds-accent);
+.scalebar__bar {
+  height: 6px;
+  margin-top: 3px;
+  border: 1.5px solid var(--ds-text);
+  border-top: 0;
+}
+
+.modehint {
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  transform: translateX(-50%);
+  padding: 5px 12px;
+  border-radius: 20px;
+  background: var(--ds-text);
+  color: var(--ds-surface);
+  font-size: 12px;
+  opacity: 0.92;
+  pointer-events: none;
+  max-width: calc(100% - 32px);
+}
+
+.app__footer {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 14px;
+  border-top: 1px solid var(--ds-border);
+  background: var(--ds-surface);
+  color: var(--ds-text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.app__footer b {
+  color: var(--ds-text);
+  font-weight: 500;
+}
+
+.app__hover {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .spacer {
   flex: 1;
 }
 
-.shell__main {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 12px;
-  padding: 12px 16px;
-  overflow: auto;
-  background: var(--ds-bg);
-}
-
-.card {
-  background: var(--ds-surface);
-  border: 1px solid var(--ds-border-strong);
-  border-radius: 10px;
-  padding: 12px 14px;
-}
-
-.card--wide {
-  grid-column: 1 / -1;
-}
-
-.card h2 {
-  margin: 0 0 6px;
-  font-size: 14px;
-}
-
-.card h3 {
-  margin: 12px 0 6px;
-  font-size: 12px;
-  color: var(--ds-text-secondary);
-  letter-spacing: 0.5px;
-}
-
-.muted {
-  color: var(--ds-text-muted);
-  font-size: 12px;
-}
-
-.list {
-  margin: 8px 0 0;
-  padding-left: 18px;
-  columns: 2;
-  font-size: 12px;
-}
-
-.list--inline {
-  list-style: none;
-  padding-left: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  columns: auto;
-}
-
-.swatches {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-  gap: 6px;
-}
-
-.swatch {
-  display: grid;
-  grid-template-columns: 14px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 6px;
-  background: var(--ds-surface-2);
-  border: 1px solid var(--ds-border);
-  border-radius: 6px;
-  font-size: 11px;
-}
-
-.swatch__dot {
-  width: 14px;
-  height: 14px;
-  border-radius: 3px;
-  border: 1px solid var(--ds-border-strong);
-}
-
-.swatch__name {
+.app__tip {
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.swatch__hex {
-  color: var(--ds-text-muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
+/* 窄屏：两侧栏变抽屉浮层（原 L236-247） */
+@media (max-width: 1100px) {
+  .app {
+    grid-template-columns: minmax(0, 1fr);
+  }
 
-.shell__footer {
-  padding: 8px 16px;
-  background: var(--ds-surface);
-  border-top: 1px solid var(--ds-border);
+  .app--hide-lib,
+  .app--hide-panel,
+  .app--hide-lib.app--hide-panel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app__lib,
+  .app__panel {
+    position: absolute;
+    top: 0;
+    bottom: 30px;
+    width: min(300px, 86vw);
+    z-index: 20;
+    box-shadow: 0 12px 40px rgb(0 0 0 / 20%);
+  }
+
+  .app__lib {
+    left: 0;
+  }
+
+  .app__panel {
+    right: 0;
+  }
 }
 </style>

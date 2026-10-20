@@ -56,6 +56,19 @@ describe('主题令牌表', () => {
     for (const name of DECORATIVE_TOKEN_NAMES) expect(THEME_TOKEN_NAMES.includes(name)).toBe(true);
   });
 
+  // RISK-17 的机器闸门：豁免清单是**封闭 4 项**（ADR-17 / C-2），且矮墙**描边**仍在 2D 令牌集里
+  it('装饰豁免清单是封闭 4 项（ADR-17 / C-2）', () => {
+    expect([...DECORATIVE_TOKEN_NAMES].sort()).toEqual([
+      'border',
+      'plan-grid-major',
+      'plan-grid-minor',
+      'wall-low',
+    ]);
+    expect(DECORATIVE_TOKEN_NAMES).toContain('wall-low');
+    expect(DECORATIVE_TOKEN_NAMES).not.toContain('wall-low-stroke');
+    expect(PLAN_TOKEN_NAMES).toContain('wall-low-stroke');
+  });
+
   it('预设元信息与 CSS 变量映射正确', () => {
     expect(THEME_PRESETS).toHaveLength(3);
     expect(tokenToCssVar('text-muted')).toBe('--ds-text-muted');

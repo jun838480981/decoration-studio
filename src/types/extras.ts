@@ -4,6 +4,13 @@
  */
 import type { MaterialKey } from './material';
 
+/**
+ * 界面语言（SPEC §D.8 的 `huxing-lang` 值域；OF §1.10）。
+ * 定义在 `types/` 的原因：`data/names-en.ts`、`features/extras/lib/i18n.ts`、组件三处都要用，
+ * 而 `data/**` ⛔ 不得反向依赖 `features/**`（分层方向：types ← data ← features）。
+ */
+export type Lang = 'zh' | 'en';
+
 /** 导出产物种类（P0-3 / P0-6 / P0-7 / P1-1） */
 export type ExportKind = 'png' | 'svg' | 'dxf' | 'csv' | 'xlsx' | 'pdf' | 'json-plan' | 'json-layout';
 

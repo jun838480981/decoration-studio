@@ -35,7 +35,7 @@ import {
   STEM_GREEN,
 } from './furniture/content-colors';
 import type { MaterialLibrary } from './materials';
-import { darker } from './scene';
+import { darker, lighter } from './scene';
 
 /** 材质相关的最小依赖（便于单测与按需替换） */
 export interface PrimitiveDeps {
@@ -49,7 +49,7 @@ export const asMesh = (o: Object3D): Mesh => o as Mesh;
 
 /** 同时投/受影（原 L2858 `sh`） */
 export function sh<T extends Object3D>(o: T): T {
-  const mesh = o as Mesh;
+  const mesh = o as unknown as Mesh;
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   return o;
@@ -222,6 +222,12 @@ export interface FurnitureMaterials {
   fabric: (contentColor: string) => unknown;
   /** 木饰面（**内容色**） */
   woodM: (contentColor: string) => unknown;
+  /**
+   * 通用「内容色」面（**内容色**，ADR-10 不随主题变）：
+   * 原实现 `vase()` 直接 `mat(c, {…})`，`c` 来自调用点的内容色（见 `content-colors.ts`）。
+   * 这里保留同一语义，同时不新增十六进制字面值、不让内容色被主题覆盖。
+   */
+  contentM: (contentColor: string, o?: Record<string, unknown>) => unknown;
   /** 屏幕（深色玻璃 + 自发光） */
   screenMat: (emissive?: string) => unknown;
   /** 自发光灯罩 */
@@ -231,7 +237,7 @@ export interface FurnitureMaterials {
   /** 半透明「玻璃感」内容色（香水瓶、玻璃杯等） */
   glassLike: (contentColor: string, opacity?: number) => unknown;
   /** 金属圆管（水龙头、灯臂、椅脚），`pts` 为世界局部折线 */
-  tube: (pts: [number, number, number][], r: number, material: unknown, seg?: number) => unknown;
+  tube: (pts: [number, number, number][], r: number, material: unknown, seg?: number) => Mesh;
   /** 柜门缝隙暗色（由 `metal.black` 派生，随主题） */
   gapColor: () => string;
   /** 隐形拉槽暗色（由 `surface.frame` 派生，随主题） */
@@ -250,6 +256,7 @@ export function createFurnitureMaterials(deps: PrimitiveDeps): FurnitureMaterial
     ceramic: (o: Record<string, unknown> = {}) =>
       mat(palette.surface.ceramic, { roughness: 0.12, ...o }, 'surface.ceramic'),
     metalLike: (contentColor: string) => ml.content(contentColor, { metalness: 0.45, roughness: 0.28 }),
+    contentM: (contentColor: string, o: Record<string, unknown> = {}) => ml.content(contentColor, o),
     fabric: (contentColor: string) => ml.content(contentColor, { roughness: 0.96 }),
     woodM: (contentColor: string) => ml.content(contentColor, { roughness: 0.55 }),
     screenMat: (emissive?: string) =>
@@ -356,7 +363,7 @@ export function fronts(
   }
 }
 
-/** 花瓶（原 L2937）：`R` 为确定性随机源 */
+/** 花瓶（原 L2937）：`R` 为确定性随机源；`contentColor` = 调用点给的花瓶内容色（ADR-10 不随主题变） */
 export function vase(
   g: Object3D,
   x: number,
@@ -377,7 +384,7 @@ export function vase(
     [r * 0.42, h * 0.86],
     [r * 0.5, h],
   ];
-  g.add(lathe(pts, fm.ceramic({ roughness: 0.35, side: DoubleSide }), x, y, z, 32));
+  g.add(lathe(pts, fm.contentM(contentColor, { roughness: 0.35, side: DoubleSide }), x, y, z, 32));
   if (!flowers) return;
   const cols = FLOWER_COLORS;
   for (let k = 0; k < 5; k++) {
@@ -444,4 +451,4 @@ export function plate(g: Object3D, r: number, x: number, y: number, z: number, f
 }
 
 /** 供颜色派生使用的再导出（家具模型文件常用） */
-export { darker };
+export { darker, lighter };

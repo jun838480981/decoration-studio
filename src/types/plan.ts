@@ -6,6 +6,13 @@ import type { Bounds, Pt, Rect } from './geometry';
 import type { Furniture } from './furniture';
 import type { MaterialKey } from './material';
 
+/**
+ * `Furniture` 在此**转出**（re-export），因为下游（`data/presets/*`、2D 图例、3D 家具）
+ * 惯于从 `@/types/plan` 一并取户型结构类型与家具类型。此前只有内部 `import`，
+ * 导致 `three-bed.ts:11` 报 TS2459「declares 'Furniture' locally, but it is not exported」。
+ */
+export type { Furniture } from './furniture';
+
 /** 承重 / 外墙 / 非承重 / 矮墙（原分类，OF §2.3） */
 export type WallKind = 'b' | 'e' | 'n' | 'low';
 

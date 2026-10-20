@@ -203,7 +203,6 @@ export function validatePlan(input: ValidationInput): ValidationIssue[] {
 
   // ---------------------------------------------------------------- 规则 2：家具压门洞
   for (const door of input.doors) {
-    const doorCenter = rectCenter(door.rect);
     const band = clearanceBand(door.rect, { x: door.o[0], y: door.o[1] }, threshold.doorClearanceDepth);
     const bandObb = rectObb(band);
     for (const f of input.furniture) {

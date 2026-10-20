@@ -10,6 +10,7 @@
  * 2. `onUnmounted` 必须无条件停循环 + 解绑全部监听 + `renderer/labelRenderer/material/geometry/texture` 全释放；
  * 3. 切主题只 `applyTheme()`（材质 / 光照 / 曝光），**不触发** `buildArchitecture` / `buildFurniture`。
  */
+import { useEventListener } from '@vueuse/core';
 import {
   ACESFilmicToneMapping,
   Clock,
@@ -44,6 +45,7 @@ import {
   DOOR_EASE,
   DOOR_KEY_DIST,
   DOOR_TAP_DIST,
+  SHOT_FILENAME,
   TAP,
   clamp01,
   ease,
@@ -165,6 +167,11 @@ export interface SceneEngine {
   roomEntries: () => RoomListEntry[];
   /** 是否处于 3D 活跃状态 */
   isActive: () => boolean;
+  /**
+   * 是否有「未重建」的脏标记（SPEC §F.3：3D 不活跃时收到变化只置 dirty）。
+   * 组件/测试用它确认「未激活时不重建」这条契约确实生效。
+   */
+  isDirty: () => boolean;
   /** 供 `Scene3DApi` 直接注册的实现对象 */
   api: Scene3DApi;
 }
@@ -195,7 +202,10 @@ export function createSceneEngine(deps: EngineDeps): SceneEngine {
   /** `enter/exit` 的 `await wait(...)` 定时器句柄（`dispose` 必须清掉，否则卸载后会回调已释放的引擎） */
   let waitTimer = 0;
   let clock = new Clock();
+  /** 相机动画的 resolve 队列（`runAnim`，按 FIFO 配对 `controls.setAnim` 的 resolve 回调） */
   let resolvers: (() => void)[] = [];
+  /** `wait()` 的 resolve 集合：`dispose()` 必须一并放行，否则 `enter()/exit()` 的 Promise 永久悬挂 */
+  const pendingWaits = new Set<() => void>();
 
   // 三签名缓存（原 `sigArch/sigFurn/sigLabels`，L2699）
   let sigArch = '';
@@ -207,7 +217,6 @@ export function createSceneEngine(deps: EngineDeps): SceneEngine {
   /** 未进入 3D 时收到变化只标记 dirty（SPEC §F.3：`enter()` 时 `force = true`） */
   let dirty = true;
   let initialized = false;
-
   const isActive = (): boolean => raf !== 0 && initialized;
 
   function bindingOf(presetId: ThemePresetId, night: boolean) {
@@ -221,8 +230,6 @@ export function createSceneEngine(deps: EngineDeps): SceneEngine {
 
   /* ---------------- 初始化 ---------------- */
 
-  let resizeObserver: ResizeObserver | null = null;
-  let canvas: HTMLCanvasElement | null = null;
   let downAt: [number, number] | null = null;
   let lookPointer: { id: number; x: number; y: number } | null = null;
 
@@ -238,7 +245,6 @@ export function createSceneEngine(deps: EngineDeps): SceneEngine {
     rendererInstance.toneMapping = ACESFilmicToneMapping;
     rendererInstance.toneMappingExposure = SCENE_THEME_BINDINGS[currentPreset].toneMappingExposure;
     deps.host.prepend(rendererInstance.domElement);
-    canvas = rendererInstance.domElement;
 
     const labels = new CSS2DRenderer();
     labelRenderer = labels;
@@ -313,7 +319,8 @@ export function createSceneEngine(deps: EngineDeps): SceneEngine {
 
   function emitWalkState(locked: boolean, touch: boolean): void {
     deps.onWalkStateChange?.({
-      walking: walk?.isWalkingMode() ?? false,
+      // 「漫游中」的唯一判据是 `ui.view3d.mode`（原 `opt.mode`），不是控制器内部状态
+      walking: deps.readUi().view3d.mode === 'walk',
       locked,
       touch,
     });
@@ -367,33 +374,19 @@ export function createSceneEngine(deps: EngineDeps): SceneEngine {
       }
     };
 
-    cv.addEventListener('pointerdown', onDown);
-    cv.addEventListener('pointermove', onMove);
-    cv.addEventListener('pointercancel', onCancel);
-    cv.addEventListener('pointerup', onUp);
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
-    document.addEventListener('pointerlockerror', onLockError);
-    cleanup.push(() => {
-      cv.removeEventListener('pointerdown', onDown);
-      cv.removeEventListener('pointermove', onMove);
-      cv.removeEventListener('pointercancel', onCancel);
-      cv.removeEventListener('pointerup', onUp);
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
-      document.removeEventListener('pointerlockerror', onLockError);
-    });
-
-    resizeObserver = new ResizeObserver(() => {
-      const w = deps.host.clientWidth;
-      const h = deps.host.clientHeight;
-      if (w > 0 && h > 0) resize(w, h);
-    });
-    resizeObserver.observe(deps.host);
-    cleanup.push(() => {
-      resizeObserver?.disconnect();
-      resizeObserver = null;
-    });
+    // B7（SPEC §C.2）：一律经 `@vueuse/core` 的 `useEventListener`，它返回的 stop 函数进 cleanup，
+    // 与手写 removeEventListener 等价但不会漏解绑（原实现有 6 处裸监听）。
+    cleanup.push(
+      useEventListener(cv, 'pointerdown', onDown),
+      useEventListener(cv, 'pointermove', onMove),
+      useEventListener(cv, 'pointercancel', onCancel),
+      useEventListener(cv, 'pointerup', onUp),
+      useEventListener(window, 'keydown', onKeyDown),
+      useEventListener(window, 'keyup', onKeyUp),
+      useEventListener(document, 'pointerlockerror', onLockError),
+    );
+    // 尺寸监听由组件持有（`useResizeFit` → `engine.resize()`，SPEC §F.7「同一个 observer」），
+    // 引擎不重复挂第二个 ResizeObserver。
   }
 
   /* ---------------- 增量重建 ---------------- */
@@ -487,7 +480,7 @@ export function createSceneEngine(deps: EngineDeps): SceneEngine {
     if (raf) return;
     clock = new Clock();
     clock.getDelta();
-    raf = requestAnimationFrame(() => tick());
+    raf = requestAnimationFrame(() => frame());
   }
 
   function stopLoop(): void {
@@ -527,16 +520,28 @@ export function createSceneEngine(deps: EngineDeps): SceneEngine {
 
   /* ---------------- 进入 / 退出（原 L3670-3706） ---------------- */
 
+  /**
+   * `await wait(ms)`：**卸载时也必须 settle**。
+   * 原实现 `dispose` 只清定时器，导致 `enter()` 的 Promise 永久悬挂（组件卸载后仍持有闭包）；
+   * 这里把 resolve 登记进 `resolvers`，`dispose()` 统一放行。
+   */
   function wait(ms: number): Promise<void> {
     return new Promise((resolve) => {
+      const settle = (): void => {
+        pendingWaits.delete(settle);
+        resolve();
+      };
+      pendingWaits.add(settle);
       waitTimer = window.setTimeout(() => {
         waitTimer = 0;
-        resolve();
+        settle();
       }, ms);
     });
   }
 
   function runAnim(duration: number, fn: (t: number) => void): Promise<void> {
+    // 引擎已释放（组件已卸载）时立刻 settle，⛔ 不留悬挂 Promise
+    if (!controls) return Promise.resolve();
     return new Promise((resolve) => {
       resolvers.push(resolve);
       controls?.setAnim({
@@ -720,6 +725,9 @@ export function createSceneEngine(deps: EngineDeps): SceneEngine {
     }
     cleanup.forEach((fn) => fn());
     cleanup = [];
+    // 放行所有悬挂的 `await`（`wait()` 与 `runAnim()` 各一套），⛔ 卸载后不留未 settle 的 Promise
+    pendingWaits.forEach((resolve) => resolve());
+    pendingWaits.clear();
     resolvers.forEach((resolve) => resolve());
     resolvers = [];
     picking?.dispose();
@@ -750,7 +758,6 @@ export function createSceneEngine(deps: EngineDeps): SceneEngine {
     controls = null;
     walk = null;
     picking = null;
-    canvas = null;
     initialized = false;
     dirty = true;
   }
@@ -758,8 +765,8 @@ export function createSceneEngine(deps: EngineDeps): SceneEngine {
   const api: Scene3DApi = {
     enter: (ctx) => enter(ctx),
     exit: () => exit(),
-    shot: () => shot('户型装修方案-3D.png'),
-    groundAt: (clientX, clientY) => groundAt(clientX, clientY),
+    shot: () => shot(SHOT_FILENAME),
+    groundAt: (clientX, clientY) => picking?.groundAt(clientX, clientY) ?? null,
     flyToRoom: (roomId) => flyToRoom(roomId),
     iso: () => {
       if (!isActive()) return;
@@ -805,6 +812,7 @@ export function createSceneEngine(deps: EngineDeps): SceneEngine {
     requestPointerLock: () => controls?.walkCtl.lock(),
     roomEntries: () => roomList(labelInput()),
     isActive,
+    isDirty: () => dirty,
     api,
   };
 }

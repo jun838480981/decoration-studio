@@ -71,6 +71,18 @@ export default tseslint.config(
       'no-console': ['warn', { allow: ['warn', 'error'] }],
       eqeqeq: ['error', 'smart'],
       'prefer-const': 'error',
+      // 解构剔除字段的标准写法（`const { a: _a, ...rest } = obj`）会用 `_` 前缀占位，
+      // 这类变量**本来就不该被使用**，因此必须放行，否则只能写 eslint-disable 注释。
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+          destructuredArrayIgnorePattern: '^_',
+          ignoreRestSiblings: true,
+        },
+      ],
     },
   },
 
@@ -135,6 +147,16 @@ export default tseslint.config(
           message: 'B7：改用 @vueuse/core 的 useEventListener',
         },
       ],
+    },
+  },
+
+  // ---- 测试文件放宽（必须放在 component-side-effects 之后才能覆盖它） ----
+  {
+    name: 'decoration-studio/spec-relax',
+    files: ['src/**/*.spec.ts'],
+    rules: {
+      // 测试需要直接操作 localStorage 来准备/清理夹具状态；B6 约束的是**组件**，不适用于测试。
+      'no-restricted-globals': 'off',
     },
   },
 

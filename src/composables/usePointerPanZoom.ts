@@ -70,6 +70,11 @@ export interface StageInteractionOptions {
   onStageDown?: () => void;
   /** 拖拽结束且确实移动过（用于刷新界面提示） */
   onDragEnd?: () => void;
+  /**
+   * 提示出口（拆改墙体的四个分支，原 L1565-1569 的 toast）。
+   * 缺省时直接写 `useToastStore()`；传入则以调用方的为准（组件可加额外埋点）。
+   */
+  onToast?: (message: string, kind: 'info' | 'warn' | 'danger') => void;
 }
 
 export interface StageInteractionApi {
@@ -86,7 +91,7 @@ export interface StageInteractionApi {
 }
 
 export function useStageInteraction(options: StageInteractionOptions): StageInteractionApi {
-  const { svg, hitOf, onStageDown, onDragEnd } = options;
+  const { svg, hitOf, onStageDown, onDragEnd, onToast } = options;
   const ui = useUiStore();
   const layout = useLayoutStore();
   const plan = usePlanStore();
@@ -277,17 +282,14 @@ export function useStageInteraction(options: StageInteractionOptions): StageInte
     svg.value?.setPointerCapture?.(event.pointerId);
   }
 
-  /** 轻量 toast（避免 composable 依赖 toast store 的类型细节） */
+  /** 轻量 toast：缺省写 `useToastStore()`，调用方可注入自己的出口 */
   function uiToast(message: string, kind: 'info' | 'warn' | 'danger' = 'info'): void {
-    void kind;
-    void message;
-    // 实际提示由 `PlanCanvas` 注入的 `onStageDown` 同级回调处理（见 `onDragEnd`）；
-    // 这里保留钩子以避免把 toast 逻辑复制两份。
-    toastSink?.(message, kind);
+    if (onToast) {
+      onToast(message, kind);
+      return;
+    }
+    toast.push(message, kind);
   }
-
-  /** 由调用方注入的提示出口（`PlanCanvas` 传入 `toast.push`） */
-  let toastSink: ((message: string, kind: 'info' | 'warn' | 'danger') => void) | null = null;
 
   function pointerMove(event: PointerEvent): void {
     if (touches.has(event.pointerId)) touches.set(event.pointerId, { x: event.clientX, y: event.clientY });

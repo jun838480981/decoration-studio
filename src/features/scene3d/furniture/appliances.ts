@@ -208,7 +208,7 @@ function officechair(s: FurnSpec): void {
 
 /** `piano` —— 原 L3407-3421 */
 function piano(s: FurnSpec): void {
-  const { group: g, w, d, c, bz, fm } = s;
+  const { group: g, w, d, c, bz, fm, colors } = s;
   const pk = fm.woodM(c);
   const bd = d * 0.5;
   const kz = bz + bd;
@@ -248,7 +248,7 @@ function piano(s: FurnSpec): void {
 
 /** `treadmill` —— 原 L3422-3431 */
 function treadmill(s: FurnSpec): void {
-  const { group: g, w, d, c, bz, fm } = s;
+  const { group: g, w, d, c, bz, fm, colors } = s;
   const tm = fm.metalLike(c);
   const bm = fm.blackMetal();
   const al = fm.metal();

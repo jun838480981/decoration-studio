@@ -237,7 +237,8 @@ export function createCameraControls(options: CameraOptions): CameraControls {
     anim = next;
   }
 
-  function update(dt: number, now: number, walkingActive: boolean): void {
+  /** `dt` 目前不参与（OrbitControls 自带阻尼步进），保留参数以对齐 `CameraControls.update` 的冻结签名 */
+  function update(_dt: number, now: number, walkingActive: boolean): void {
     if (anim) {
       const t = clamp01((now - anim.t0) / anim.dur);
       anim.fn(t);
@@ -283,7 +284,6 @@ export function createCameraControls(options: CameraOptions): CameraControls {
     flyToRoom,
     enterWalk,
     exitWalk,
-    lookBy,
     update,
     isAnimating: () => anim !== null || fly !== null,
     setAnim,

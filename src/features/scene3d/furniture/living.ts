@@ -4,7 +4,7 @@
  * 逐句对应原 `buildFurniture()` 的 case（`装修设计.html` L2973-3000、L3111-3149、L3294-3312）。
  */
 import { Group } from 'three';
-import { DECOR_CREAM, DECOR_DENIM, LEAF_DARK, LEAF_LIGHT, SOIL_BROWN } from './content-colors';
+import { DECOR_CERAMIC, DECOR_CREAM, DECOR_DENIM, LEAF_DARK, LEAF_LIGHT, SOIL_BROWN } from './content-colors';
 import type { FurnSpec } from './shared';
 import { blob, box, cyl, fronts, lathe, legs, rbox, ring, rod, vase } from '../primitives';
 
@@ -190,7 +190,7 @@ function tvstand(s: FurnSpec): void {
     rbox(0.9, 0.06, 0.09, colors.palette.metal.black, 0, 0.5, -0.02, 0.02),
     box(0.86, 0.045, 0.002, fm.fabric(colors.palette.fabric.sofa), 0, 0.507, 0.026),
   );
-  vase(g, w / 2 - 0.25, 0.5, 0, 0.06, 0.26, colors.palette.surface.cap, R, fm);
+  vase(g, w / 2 - 0.25, 0.5, 0, 0.06, 0.26, DECOR_CERAMIC, R, fm);
   g.add(
     box(0.25, 0.035, 0.18, colors.palette.wood.oak, -w / 2 + 0.3, 0.5, 0),
     box(0.22, 0.03, 0.16, fm.ceramic({ roughness: 0.8 }), -w / 2 + 0.3, 0.535, 0),

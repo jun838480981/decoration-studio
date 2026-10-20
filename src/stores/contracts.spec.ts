@@ -5,7 +5,7 @@
  * 这里只断言初值与常量，不测业务逻辑（业务由 t4/t5/t6 各自测）。
  */
 import { createPinia, setActivePinia } from 'pinia';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useLayoutStore, LEGACY_STORE_KEY, UNDO_LIMIT, stateKey, stateKeyOf } from '@/stores/layout';
 import { usePlanStore, PLAN_FMT, PLAN_SET_FMT, PLAN_STORE_KEY, PRESET_ORDER, UNDO_STRUCT_LIMIT } from '@/stores/plan';
 import { useThemeStore, THEME_STORE_KEY } from '@/stores/theme';
@@ -62,7 +62,16 @@ describe('layout store（SPEC §D.6）', () => {
     expect(layout.redoStack).toEqual([]);
     expect(layout.canUndo).toBe(false);
     expect(layout.canRedo).toBe(false);
-    expect(layout.defaultState()).toEqual({ furniture: [], rooms: {}, demolished: [], measures: [] });
+    // `defaultState()` 不是「空表」：它按原实现 L976-981 装载**当前户型**的房间覆盖与初始布置
+    // （户型级 furniture 工厂 → autoFurnish 兜底）。因此只断言结构契约，不断言内容为空。
+    const fresh = layout.defaultState();
+    expect(Array.isArray(fresh.furniture)).toBe(true);
+    expect(typeof fresh.rooms).toBe('object');
+    expect(fresh.demolished).toEqual([]);
+    expect(fresh.measures).toEqual([]);
+    // 房间覆盖表必须覆盖当前户型的每个房间（名称 + 材质），这是 §D.6 的字段契约
+    const plan = usePlanStore();
+    expect(Object.keys(fresh.rooms).sort()).toEqual(plan.rooms.map((r) => r.id).sort());
   });
 
   it('fixState 是纯函数：坏数据不抛错', () => {
@@ -116,6 +125,36 @@ describe('ui store（SPEC §D.7）', () => {
     expect(ui.flags.grid).toBe(true);
     ui.setTool('measure');
     expect(ui.tool).toBe('measure');
+  });
+
+  /**
+   * C-4 裁定 / SPEC §D.8 / §K.3 第 6 条：`huxing-panes` 必须**真正接线**（读 + 写）。
+   * 测试环境是 `node`（无 localStorage），用 `vi.stubGlobal` 临时注入最小实现，用完还原。
+   */
+  it('huxing-panes 已接线：openDrawer 写入、启动时读回', () => {
+    const backing = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => backing.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        backing.set(key, value);
+      },
+      removeItem: (key: string) => {
+        backing.delete(key);
+      },
+    });
+    try {
+      setActivePinia(createPinia());
+      const ui = useUiStore();
+      ui.openDrawer('lib', false);
+      expect(ui.panes.hideLib).toBe(true);
+      expect(backing.get(STORAGE_KEYS.panes)).toBe(JSON.stringify({ hideLib: true, hidePanel: false }));
+
+      // 新 pinia = 重新走一次 `loadPanes()`，模拟刷新后读回
+      setActivePinia(createPinia());
+      expect(useUiStore().panes).toEqual({ hideLib: true, hidePanel: false });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 

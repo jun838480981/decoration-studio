@@ -222,7 +222,7 @@ const NIGHT: ThemeTokens = {
   'wall-bearing': '#eef1f5', // SPEC §E.4：承重墙改用浅色
   'wall-bearing-hl': '#ef8073', // 派生：沿用 danger 谱系，on canvas 6.3:1
   'wall-exterior': '#8a93a0', // SPEC §E.4
-  'wall-partition': '#5f6875', // SPEC §E.4（on canvas 3.14:1）
+  'wall-partition': '#68717f', // SPEC §E.4：实测 on canvas(#1b1f27) 3.35:1（原 #5f6875 仅 2.93:1，未达 ≥3:1）
   'wall-low': '#2b313a', // 派生（填充为装饰）
   'wall-low-stroke': '#8a93a0', // 派生：= wall-exterior
   'wall-demolished': '#e08b5c', // 派生：= accent

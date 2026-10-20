@@ -1,15 +1,16 @@
 /**
- * 亮点层的**动作集合**（composable）：导出 / 导入 / 打印/ PDF / 对比导出。
+ * 亮点层的**动作集合**（composable）：导出 / 导入 / 打印 / PDF / 对比导出。
  *
- * 为什么抽成 composable：`ExportMenu.vue` 与 `CommandPalette.vue` 需要**同一批动作**
- * （SPEC §B.2 P1-3 要求面板不抢既有快捷键且能执行导出），如果两处各写一遍编排逻辑，
- * 就会出现"菜单能导出、面板导出的东西不同"的双份真相。动作只在这里定义一次，
- * 两个组件只负责 UI（按钮 / 命令项）。
+ * 为什么抽成 composable：`ExportMenu.vue`、`CostReport.vue`、`CommandPalette.vue`、
+ * `PlanCompare.vue` 需要**同一批动作**（SPEC §B.2 P1-3 要求面板不抢既有快捷键且能执行导出）。
+ * 如果各处各写一遍编排逻辑，就会出现"菜单能导出、面板导出的东西不同"的双份真相。
+ * 动作只在这里定义一次，组件只负责 UI（按钮 / 命令项）。
  *
  * 约束：
  * - ⛔ 不 import `features/plan2d` / `features/scene3d`（B1/B2）：2D 节点经 `getSvg` 回调，
  *   3D 截图经 `utils/scenePort` 的 `Scene3DApi.shot()`（SPEC §F.4）；
  * - ⛔ 不直读 `localStorage`（B6）：其它方案的布置走 `plan.readState()`；
+ * - 语言来自 `useLang()`（响应式，切换语言后导出文件名与表头立即跟着变）；
  * - 所有产物都返回/提示**真实结果**：失败给出原因，⛔ 不伪造成功。
  */
 import { computed, ref, type ComputedRef, type Ref } from 'vue';
@@ -19,11 +20,11 @@ import { useToastStore } from '@/stores/toast';
 import { useUiStore } from '@/stores/ui';
 import { useTheme } from '@/theme/useTheme';
 import { getScene3DApi } from '@/utils/scenePort';
-import { costReportFromLevels, priceResolverWithFallback, usageFromLevels, type CostReportModel, type RoomUsage } from './lib/cost';
+import { costReportFromLevels, priceResolver, usageFromLevels, type CostReportModel, type RoomUsage } from './lib/cost';
 import { compareSelectedPlans, currentLevelInputs } from './lib/plan-input';
 import { liveState, type LevelInput } from './lib/metrics';
 import { validatePlan } from './lib/validate';
-import { currentLang, createTranslator, type Lang, type Translate } from './lib/i18n';
+import { createTranslator, useLang, type Lang, type Translate } from './lib/i18n';
 import { downloadBlob, downloadText } from './lib/download';
 import { compareCsv, costCsv, issuesCsv } from './lib/export-csv';
 import { buildXlsx, costXlsxSheets, xlsxFileName } from './lib/export-xlsx';
@@ -43,7 +44,7 @@ import type { ExportKind, PlanDiffSummary, ValidationIssue } from '@/types/extra
 import type { Plan, PlanStructure } from '@/types/plan';
 
 export interface ExtrasActionsOptions {
-  /** 语言（默认读 `huxing-lang`） */
+  /** 语言（缺省用 `useLang()` 的响应式状态；只有单测/嵌入场景才需要显式传） */
   lang?: () => Lang;
   /** 2D 画布 `<svg>` 取用器（缺省时按 `svg[data-plan-canvas]` 约定查找） */
   getSvg?: () => SVGSVGElement | null;
@@ -88,7 +89,9 @@ export function useExtrasActions(options: ExtrasActionsOptions = {}): ExtrasActi
   const { presetId, setPreset, resolve } = useTheme();
 
   const busy = ref(false);
-  const lang = computed<Lang>(() => options.lang?.() ?? currentLang());
+  // i18n 接线（C-4）：语言状态是响应式的，切换语言后 `t` / 文件名 / 表头一起变
+  const { lang: uiLang } = useLang();
+  const lang = computed<Lang>(() => options.lang?.() ?? uiLang.value);
   const t = computed(() => createTranslator(lang.value));
   const baseName = computed(
     () => options.baseName?.() ?? (lang.value === 'en' ? 'decoration-plan' : '户型装修方案'),
@@ -97,8 +100,9 @@ export function useExtrasActions(options: ExtrasActionsOptions = {}): ExtrasActi
   const levels = computed(() =>
     currentLevelInputs({ plan: plan.plan, level: plan.level, isMulti: plan.isMulti, live: layout, reader: plan }),
   );
-  const usage = computed(() => usageFromLevels(levels.value));
-  const priceOf = computed(() => priceResolverWithFallback(layout.materialBreakdown));
+  const usage = computed(() => usageFromLevels(levels.value, lang.value));
+  // 单价单一来源 = `data/materials.ts` 的 `MATS[].price`（见 lib/cost.ts 的 priceResolver）
+  const priceOf = computed(() => priceResolver());
   const costModel = computed(() =>
     costReportFromLevels({ levels: levels.value, priceOf: priceOf.value, lang: lang.value }),
   );

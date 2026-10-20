@@ -6,7 +6,7 @@
  * - `resolve()` 返回**字面值**，供 SVG 呈现属性 / 3D / canvas 导出（R-EXP-1）。
  */
 import { defineStore } from 'pinia';
-import { computed, ref, type ComputedRef } from 'vue';
+import { computed, ref } from 'vue';
 import { applyCssVars as applyTokens, resolveToken } from '@/theme/applyTheme';
 import { DEFAULT_THEME_PRESET_ID, isThemePresetId, THEMES } from '@/theme/tokens';
 import { readRaw, STORAGE_KEYS, writeRaw } from '@/utils/persistence';

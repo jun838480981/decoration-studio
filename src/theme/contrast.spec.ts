@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { CONTRAST_ASSERTIONS, evaluateAllContrast } from './contrast';
-import { THEMES, THEME_PRESET_IDS } from './tokens';
+import { DECORATIVE_TOKEN_NAMES, THEMES, THEME_PRESET_IDS } from './tokens';
 
 const results = evaluateAllContrast(THEMES);
 
@@ -14,6 +14,16 @@ describe('主题对比度断言（SPEC §E.7）', () => {
     for (const presetId of THEME_PRESET_IDS) {
       expect(CONTRAST_ASSERTIONS[presetId].length).toBeGreaterThan(30);
     }
+  });
+
+  // RISK-17 / C-2：断言集**不含**装饰豁免项（尤其 `wall-low` 填充），但**必须含** `wall-low-stroke`
+  it('断言集排除装饰豁免项，但保留矮墙描边（ADR-17 / C-2）', () => {
+    const ids = CONTRAST_ASSERTIONS.day.map((p) => p.id);
+    for (const name of DECORATIVE_TOKEN_NAMES) {
+      expect(ids, `装饰豁免项 ${name} 不应被断言`).not.toContain(`plan:${name}`);
+    }
+    expect(ids).not.toContain('plan:wall-low');
+    expect(ids).toContain('plan:wall-low-stroke');
   });
 
   it('断言覆盖 SPEC §E.7 的 13 组最低要求', () => {

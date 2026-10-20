@@ -25,7 +25,7 @@ import {
   ShapeGeometry,
   SphereGeometry,
 } from 'three';
-import type { Bounds } from '@/types/geometry';
+import type { Bounds, Rect } from '@/types/geometry';
 import type { MaterialKey } from '@/types/material';
 import type { Door, Lintel, PlanLevel, PlanStructure, Room, Slide, Stair, Wall, Win } from '@/types/plan';
 import type { MaterialPalette } from '@/types/theme';
@@ -105,6 +105,7 @@ export function buildArchitecture(groups: ArchitectureGroups, input: Architectur
     groups,
     input,
     deps,
+    ml,
     palette,
     world,
     wallMat: ml.mat(palette.surface.wall, { roughness: 0.92 }, 'surface.wall'),
@@ -172,6 +173,8 @@ interface BuildCtx {
   groups: ArchitectureGroups;
   input: ArchitectureInput;
   deps: ArchitectureDeps;
+  /** 材质库（地板贴图 / 玻璃单例等需要按 key 现取） */
+  ml: MaterialLibrary;
   palette: MaterialPalette;
   world: WorldConfig;
   wallMat: MeshStandardMaterial;
@@ -220,12 +223,24 @@ function shapeOf(ctx: BuildCtx, poly: Room['poly'], flip = false): Shape {
   return shape;
 }
 
+/**
+ * 矩形入参（只读前 4 项）：墙 `Wall`（第 5 项是 `WallKind`）、窗 `Win`（后两项可选）
+ * 与门洞 `Rect` 都直接传进来，由 `rectOf()` 归一，避免调用点各自 `as never`。
+ */
+type RectSource = readonly number[] | Wall | Win;
+
+/** 取前 4 项为 `Rect`（`Wall` / `Win` 的尾项在建筑体块里不参与尺寸计算） */
+function rectOf(src: RectSource): Rect {
+  return [Number(src[0]), Number(src[1]), Number(src[2]), Number(src[3])];
+}
+
 /** 墙体（原 `wallBox`，L3443-3453）：顶面用压顶色，底部加踢脚线，附棱线（仅漫游可见） */
-function wallBox(ctx: BuildCtx, rect: readonly number[], yb: number, yt: number, offsetY = 0): void {
+function wallBox(ctx: BuildCtx, source: RectSource, yb: number, yt: number, offsetY = 0): void {
   if (yt - yb <= 0.001) return;
   const { world } = ctx;
-  const center = rectCenter(world, rect as [number, number, number, number]);
-  const size = rectSize(rect as [number, number, number, number]);
+  const rect = rectOf(source);
+  const center = rectCenter(world, rect);
+  const size = rectSize(rect);
   const materials = [ctx.wallMat, ctx.wallMat, ctx.capMat, ctx.wallMat, ctx.wallMat, ctx.wallMat];
   const o = new Mesh(new BoxGeometry(size.w, yt - yb, size.d), materials as never);
   o.position.set(center.x, (yb + yt) / 2 + offsetY, center.z);
@@ -250,13 +265,12 @@ function wallBox(ctx: BuildCtx, rect: readonly number[], yb: number, yt: number,
   }
 }
 
-const vec = [null] as (null | number)[];
-
 /** 只画体块、不参与漫游辅助（复式其它层用；原 `wallBoxAt`，L3488-3493） */
-function wallBoxAt(ctx: BuildCtx, rect: readonly number[], yb: number, yt: number): void {
+function wallBoxAt(ctx: BuildCtx, source: RectSource, yb: number, yt: number): void {
   if (yt - yb <= 0.001) return;
-  const center = rectCenter(ctx.world, rect as [number, number, number, number]);
-  const size = rectSize(rect as [number, number, number, number]);
+  const rect = rectOf(source);
+  const center = rectCenter(ctx.world, rect);
+  const size = rectSize(rect);
   const o = new Mesh(
     new BoxGeometry(size.w, yt - yb, size.d),
     [ctx.wallMat, ctx.wallMat, ctx.capMat, ctx.wallMat, ctx.wallMat, ctx.wallMat] as never,
@@ -269,8 +283,7 @@ function wallBoxAt(ctx: BuildCtx, rect: readonly number[], yb: number, yt: numbe
 
 /** 房间地面（普通房间 `ShapeGeometry`；飘窗 `ExtrudeGeometry` 挤出 0.45m）+ 天花 + 吸顶灯 */
 function buildRoomFloor(ctx: BuildCtx, room: Room): void {
-  const { ml, world, groups, input } = ctx;
-  const top = input.cut;
+  const { ml, world, groups, input } = ctx;  const top = input.cut;
   const matKey = input.roomMats[room.id] ?? room.mat;
   const floorKind: MaterialKey = matKey in FLOOR_KINDS ? (matKey as MaterialKey) : 'tile800';
   const mat = ml.floorMat(floorKind);

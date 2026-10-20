@@ -10,12 +10,12 @@
  *
  * 单一来源说明（写给 reviewer）：
  * - **面积口径**的唯一实现是 `lib/metrics.ts`（内部用 three `ShapeUtils.area`）；
- * - **单价**的唯一来源是 `data/materials.ts` 的 `MATS[].price`（t4）；本模块通过
- *   `priceOf` 注入，不复制价格表（避免"双份真相"）。
- *   当前 `priceResolverFromBreakdown()` 从 store 的 `materialBreakdown` 反推单价
- *   （`cost / (area × 1.05)`），是 t4 落地前的**桥接实现**，已在 `docs/EXTRAS.md` 登记。
+ * - **单价**的唯一来源是 `data/materials.ts` 的 `MATS[].price`，经 `priceResolver()` 注入
+ *   （⛔ 不在 extras 里复制价格表，避免"双份真相"）；
+ * - **房间名 / 材料名的英文**来自 `data/names-en.ts`（`NAMES_EN`，原实现 L418-437）。
  */
-import { materialLabel, translate, type Lang } from './i18n';
+import { materialPrice } from '@/data/materials';
+import { materialLabel, displayName, translate, type Lang } from './i18n';
 import {
   levelDemolitionM,
   polygonAreaM2,
@@ -99,19 +99,23 @@ export function usageFromStoreRows(rows: readonly RoomRowLike[]): RoomUsage[] {
 }
 
 /** 结构 + 存档 → 房间用量（跨方案/跨层的通用路径） */
-export function usageFromStructure(structure: PlanStructure, state: PlanState): RoomUsage[] {
+export function usageFromStructure(structure: PlanStructure, state: PlanState, lang: Lang = 'zh'): RoomUsage[] {
   return structure.rooms.map((room) => ({
     id: room.id,
-    name: roomDisplayName(room, state),
+    // 内置房间名走 `NAMES_EN`，用户改过的名字原样显示（OF §1.10）
+    name: displayName(roomDisplayName(room, state), lang),
     mat: roomMaterial(room, state),
     area: polygonAreaM2(room.poly),
     counted: room.counted !== false,
   }));
 }
 
-export function usageFromLevels(levels: readonly { structure: PlanStructure; state: PlanState }[]): RoomUsage[] {
+export function usageFromLevels(
+  levels: readonly { structure: PlanStructure; state: PlanState }[],
+  lang: Lang = 'zh',
+): RoomUsage[] {
   const out: RoomUsage[] = [];
-  for (const level of levels) out.push(...usageFromStructure(level.structure, level.state));
+  for (const level of levels) out.push(...usageFromStructure(level.structure, level.state, lang));
   return out;
 }
 
@@ -125,8 +129,12 @@ export function wallAreaFromLevels(levels: readonly { structure: PlanStructure }
 }
 
 /**
- * 桥接：从 store 的 `materialBreakdown`（`{key, area, cost}`，cost 已含 1.05 损耗）反推单价。
- * ⚠️ TODO(t4)：`data/materials.ts` 落地后改为 `(key) => MATS[key].price`，本函数即可删除。
+ * 从 store 的 `materialBreakdown`（`{key, area, cost}`，cost 已含 1.05 损耗）反推单价。
+ *
+ * ⚠️ 保留原因（写给 reviewer）：store 的 `materialBreakdown` 用的是 `data/materials.ts` 的单价，
+ * 这里反推出来的值与 `MATS[key].price` 相同；它**只作为交叉校验的备选路径**存在
+ * （例如将来用户自定义单价时，store 会是唯一知道新价格的地方）。
+ * 正常路径见下方 `priceResolver()` —— **单一来源是 `MATS[].price`**，本函数不再被默认使用。
  */
 export function priceResolverFromBreakdown(
   breakdown: readonly MaterialBreakdownLike[],
@@ -139,30 +147,21 @@ export function priceResolverFromBreakdown(
 }
 
 /**
- * 备用单价表（**只在 store 拿不到单价时生效**）。
- *
- * ⚠️ 这是一张**镜像表**，不是新的口径来源：数值逐字来自 OF §6.1（`装修设计.html` L522-531）的
- * `MATS[].price`。它存在的原因只有一个——`data/materials.ts` 尚未落地（t4）时，报价/清单不能是空的。
- * **t4 落地后 `priceResolverWithFallback()` 会自动优先使用 store/`MATS` 的值**，
- * 这张表退化为兜底；`docs/EXTRAS.md` 已登记"t4 落地后删除"。
+ * 材料单价（元/m²）的**单一来源**：`data/materials.ts` 的 `MATS[].price`（OF §6.1）。
+ * ⛔ 不在 extras 里维护第二张价格表（原 `FALLBACK_MATERIAL_PRICES` 镜像表已删除）。
  */
-export const FALLBACK_MATERIAL_PRICES: Record<MaterialKey, number> = {
-  wood: 320,
-  walnut: 380,
-  tile800: 220,
-  tile600: 160,
-  marble: 650,
-  antislip: 140,
-  terrazzo: 280,
-  carpet: 200,
-};
+export function priceResolver(): (key: MaterialKey) => number {
+  return (key: MaterialKey): number => materialPrice(key);
+}
 
-/** 先问 store（`materialBreakdown` 反推），拿不到再退到 `FALLBACK_MATERIAL_PRICES` */
+/**
+ * @deprecated 保留签名仅为兼容既有调用点；内部已改为直接读 `MATS`（单一来源）。
+ * 新代码请用 `priceResolver()`。
+ */
 export function priceResolverWithFallback(
-  breakdown: readonly MaterialBreakdownLike[],
+  _breakdown: readonly MaterialBreakdownLike[],
 ): (key: MaterialKey) => number {
-  const fromStore = priceResolverFromBreakdown(breakdown);
-  return (key: MaterialKey): number => fromStore(key) || FALLBACK_MATERIAL_PRICES[key] || 0;
+  return priceResolver();
 }
 
 /** 房间短边/面积异常的原料（报价模型里顺带带上，图册与校验共用） */
@@ -280,7 +279,7 @@ export function costReportFromLevels(input: CostFromLevelsInput): CostReportMode
     0,
   );
   return buildCostReport({
-    usage: usageFromLevels(input.levels),
+    usage: usageFromLevels(input.levels, input.lang),
     priceOf: input.priceOf,
     demolishedLength,
     wallAreaM2: wallAreaFromLevels(input.levels),

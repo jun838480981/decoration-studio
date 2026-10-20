@@ -1,0 +1,456 @@
+/**
+ * 亮点层面板的共用样式（`features/extras/**` 组件共享）。
+ *
+ * 三条硬约束（SPEC §C.2）：
+ * 1. **本文件不含任何色值**（B3）：全部走 `--ds-*` 令牌，随主题预设联动（P0-1/P1-2）；
+ * 2. 类名统一 `dsx-` 前缀，避免与 2D/3D 或 `components/` 的样式撞车；
+ * 3. 打印相关只写属性钩子（`data-print-*`），样式在 `print.css`（P1-4 解耦）。
+ *
+ * 尺寸口径：触屏热区用 `min-height: 30px`（桌面）/ `34px`（粗指针），
+ * 与 `composables/usePointerKind.ts` 的 `COARSE` 语义一致（此处用媒体查询表达，避免 CSS 里 import TS）。
+ */
+
+.dsx-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--ds-surface);
+  border: 1px solid var(--ds-border-strong);
+  border-radius: 10px;
+  color: var(--ds-text);
+  font-size: 12px;
+}
+
+.dsx-panel__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+}
+
+.dsx-panel__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.dsx-panel__hint {
+  margin: 0;
+  color: var(--ds-text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.dsx-panel__section {
+  padding-top: 6px;
+  border-top: 1px solid var(--ds-border);
+}
+
+.dsx-panel__section:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.dsx-subtitle {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ds-text-secondary);
+}
+
+.dsx-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.dsx-spacer {
+  flex: 1;
+}
+
+.dsx-muted {
+  color: var(--ds-text-muted);
+}
+
+/* ---------------------------------------------------------------- 按钮 / chip */
+
+.dsx-btn {
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 1px solid var(--ds-border-strong);
+  border-radius: 6px;
+  background: var(--ds-surface-2);
+  color: var(--ds-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.dsx-btn:hover:not(:disabled) {
+  background: var(--ds-accent-soft);
+}
+
+.dsx-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dsx-btn--primary {
+  background: var(--ds-accent);
+  border-color: var(--ds-accent);
+  color: var(--ds-on-accent);
+}
+
+.dsx-btn--primary:hover:not(:disabled) {
+  background: var(--ds-accent-hover);
+  border-color: var(--ds-accent-hover);
+}
+
+.dsx-btn--danger {
+  border-color: var(--ds-danger);
+  color: var(--ds-danger);
+}
+
+.dsx-chip {
+  min-height: 26px;
+  padding: 2px 9px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ds-text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.dsx-chip[aria-pressed='true'] {
+  background: var(--ds-accent-soft);
+  border-color: var(--ds-accent);
+  color: var(--ds-accent);
+}
+
+.dsx-chip:hover:not([aria-pressed='true']) {
+  background: var(--ds-surface-2);
+  border-color: var(--ds-border-strong);
+}
+
+@media (pointer: coarse) {
+  .dsx-btn {
+    min-height: 34px;
+  }
+
+  .dsx-chip {
+    min-height: 32px;
+    padding: 4px 12px;
+  }
+}
+
+/* ---------------------------------------------------------------- 表格 */
+
+.dsx-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dsx-table caption {
+  caption-side: top;
+  text-align: start;
+  padding: 2px 0 4px;
+  color: var(--ds-text-secondary);
+  font-size: 11px;
+}
+
+.dsx-table th,
+.dsx-table td {
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--ds-border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.dsx-table th {
+  color: var(--ds-text-secondary);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.dsx-table tfoot td {
+  border-top: 2px solid var(--ds-border-strong);
+  border-bottom: 0;
+  font-weight: 600;
+}
+
+.dsx-num {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.dsx-delta--up {
+  color: var(--ds-danger);
+}
+
+.dsx-delta--down {
+  color: var(--ds-success);
+}
+
+.dsx-delta--flat {
+  color: var(--ds-text-muted);
+}
+
+/* ---------------------------------------------------------------- 告警列表 */
+
+.dsx-issues {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 280px;
+  overflow: auto;
+}
+
+.dsx-issue {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: start;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 7px;
+  border: 1px solid var(--ds-border);
+  border-radius: 6px;
+  background: var(--ds-surface-2);
+  color: var(--ds-text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.dsx-issue:hover {
+  border-color: var(--ds-border-strong);
+}
+
+.dsx-issue__sev {
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.dsx-issue__sev--error {
+  background: var(--ds-danger-soft);
+  color: var(--ds-danger);
+}
+
+.dsx-issue__sev--warn {
+  background: var(--ds-warning-soft);
+  color: var(--ds-warning);
+}
+
+.dsx-issue__sev--info {
+  background: var(--ds-info-soft);
+  color: var(--ds-info);
+}
+
+.dsx-issue__rule {
+  color: var(--ds-text-secondary);
+  white-space: nowrap;
+}
+
+.dsx-issue__msg {
+  min-width: 0;
+  word-break: break-word;
+}
+
+.dsx-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  color: var(--ds-text-secondary);
+}
+
+/* ---------------------------------------------------------------- 方案选择 */
+
+.dsx-planlist {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 4px;
+  max-height: 160px;
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--ds-border);
+  border-radius: 6px;
+  background: var(--ds-surface-2);
+}
+
+.dsx-planlist label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 26px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.dsx-planlist label:hover {
+  background: var(--ds-accent-soft);
+}
+
+.dsx-planlist input {
+  accent-color: var(--ds-accent);
+}
+
+.dsx-badge {
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--ds-accent-soft);
+  color: var(--ds-accent);
+  font-size: 10px;
+  line-height: 16px;
+}
+
+/* ---------------------------------------------------------------- 命令面板 */
+
+.dsx-palette-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 10vh 12px 12px;
+  background: color-mix(in srgb, var(--ds-text) 40%, transparent);
+}
+
+.dsx-palette {
+  width: min(560px, 100%);
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  background: var(--ds-surface);
+  border: 1px solid var(--ds-border-strong);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--ds-text) 28%, transparent);
+}
+
+.dsx-palette__input {
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--ds-border-strong);
+  border-radius: 8px;
+  background: var(--ds-surface-2);
+  color: var(--ds-text);
+}
+
+.dsx-palette__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: auto;
+}
+
+.dsx-palette__group {
+  padding: 6px 8px 2px;
+  color: var(--ds-text-muted);
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.dsx-palette__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.dsx-palette__item[aria-selected='true'] {
+  background: var(--ds-accent-soft);
+  color: var(--ds-accent);
+}
+
+.dsx-palette__key {
+  margin-inline-start: auto;
+  color: var(--ds-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+}
+
+/* ---------------------------------------------------------------- 历史时间线 */
+
+.dsx-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.dsx-timeline__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 28px;
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ds-text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.dsx-timeline__item:hover {
+  border-color: var(--ds-border-strong);
+  background: var(--ds-surface-2);
+}
+
+.dsx-timeline__item[aria-current='true'] {
+  border-color: var(--ds-accent);
+  background: var(--ds-accent-soft);
+  color: var(--ds-accent);
+}
+
+.dsx-timeline__depth {
+  color: var(--ds-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- 主题预设 */
+
+.dsx-themes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--ds-border-strong);
+  border-radius: 999px;
+}
+
+.dsx-swatch {
+  display: inline-flex;
+  gap: 3px;
+  margin-inline-start: 4px;
+}
+
+.dsx-swatch span {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  border: 1px solid var(--ds-border-strong);
+}

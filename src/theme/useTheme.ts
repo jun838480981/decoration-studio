@@ -12,14 +12,16 @@
  * 令牌来源恒为 `theme/tokens.ts`（唯一色值来源），读写状态在 `stores/theme.ts`（SPEC §D.7）。
  */
 import { storeToRefs } from 'pinia';
-import { computed, type ComputedRef } from 'vue';
+import { computed, type ComputedRef, type Ref } from 'vue';
 import { applyCssVars as applyTokens, resolveToken, tokenToCssVar } from './applyTheme';
 import { DEFAULT_THEME_PRESET_ID, isThemePresetId, THEME_PRESETS, THEMES, THEME_PRESET_IDS } from './tokens';
 import { useThemeStore } from '@/stores/theme';
 import type { ThemePresetId, ThemePresetMeta, ThemeTokenName, ThemeTokens } from '@/types/theme';
 
 export interface UseThemeReturn {
-  presetId: ComputedRef<ThemePresetId>;
+  // 注意：`presetId` 来自 store 的 `ref`（可写），不是 computed —— 因此用 `Ref` 而非
+  // `ComputedRef`。`ComputedRef` 是 `Ref` 的子类型，所以把接口放宽为 `Ref` 不会破坏任何调用方。
+  presetId: Ref<ThemePresetId>;
   tokens: ComputedRef<ThemeTokens>;
   presets: readonly ThemePresetMeta[];
   /** 当前预设的元信息（中英文名） */

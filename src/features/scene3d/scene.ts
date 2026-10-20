@@ -42,6 +42,9 @@ export const MAX_DISTANCE = 45;
 /** 地面反投影的最远接受距离（m）——原 L3733 */
 export const GROUND_MAX_DIST = 60;
 
+/** 3D 截图文件名（原 L3888 的 `户型装修方案-3D.png`，⛔ 不含 hex，仅字符串常量） */
+export const SHOT_FILENAME = '户型装修方案-3D.png';
+
 /**
  * 世界坐标配置：原点 = 户型包围盒中心（原 `OX()/OY()`，L2691）。
  * 原实现每次调用都读全局 `BOUNDS`；这里改成**显式传入**，切户型时由 `engine.setBounds()` 更新。

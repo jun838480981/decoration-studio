@@ -31,11 +31,16 @@ export const RESERVED_SINGLE_KEYS = ['p', 'e', 't', '1', '2', 'v', 'm', 'x', 'f'
 /**
  * 冲突自检：面板快捷键是否踩到既有单键。
  * 有冲突时返回冲突项（正常应始终为空数组 → `extras.spec.ts` 里断言）。
+ *
+ * 实现注记：`PALETTE_SHORTCUTS` 是 `as const` 的字面量联合，直接与 `RESERVED_SINGLE_KEYS`
+ * 比较会被 TS 判成"无重叠的比较"（TS2367）；这里显式拓宽成 `string` 再比 —— 语义不变，
+ * 而且**保留**了"将来有人把 `ctrl+p` 写进面板快捷键时能被这条自检抓到"的能力。
  */
 export function paletteConflicts(): string[] {
   const conflicts: string[] = [];
-  for (const combo of PALETTE_SHORTCUTS) {
-    for (const key of RESERVED_SINGLE_KEYS) {
+  const reserved: readonly string[] = RESERVED_SINGLE_KEYS;
+  for (const combo of PALETTE_SHORTCUTS as readonly string[]) {
+    for (const key of reserved) {
       if (combo === key || combo.endsWith(`+${key}`)) conflicts.push(combo);
     }
   }

@@ -1,15 +1,30 @@
 /**
  * 3D 场景模块出口与契约常量（SPEC §F.3 / §F.4 / §E.8）。
  *
- * ⚠️ 本目录由 **t5（scene3d-dev）** 独占实现。t3 在此固化：
- * - `Scene3DApi` 的实现入口（经 `utils/scenePort` 注册，⛔ 不用 `window.View3D`）；
- * - 三签名重建的输入来源（F.3）；
- * - 与主题联动的取色入口（E.8，⛔ 目录内不得出现任何 hex）。
+ * ⚠️ 本目录由 **t5（scene3d-dev）** 独占实现；t3 在此固化了契约骨架，t5 已按下列顺序补齐：
+ * `engine` → `materials` → `primitives` → `architecture` → `furniture/*` → `camera` → `lighting`
+ * → `picking` → `labels` → `walk` → `Scene3D.vue`。
+ *
+ * 三条硬约束（评审会直接查）：
+ * - `Scene3DApi` 的实现经 `utils/scenePort` 注册，⛔ 不用 `window.View3D`；
+ * - 三签名重建的输入来源见 `SCENE_SIGNATURE_SOURCES`（F.3）；
+ * - 主题联动取色只经 `theme/material-palette.ts`（E.8），⛔ 目录内不得出现任何十六进制字面值。
  */
 import { MATERIAL_PALETTES, resolveSceneTheme } from '@/theme/material-palette';
 
 export type { Scene3DApi, SceneSignatures, LayoutSlice, PlanSlice, UiSlice } from '@/types/scene3d';
 export { resolveSceneTheme, MATERIAL_PALETTES };
+
+/**
+ * 3D 视口组件（`App.vue` 挂载用，SPEC §F.4）。
+ * ⚠️ 必须以 **`v-show`（而非 `v-if`）常驻挂载**：`ui.setViewMode('3d')` 依赖
+ * `utils/scenePort` 里已注册的 API，组件未挂载时会走「3D 模块尚未就绪」分支。
+ */
+export { default as Scene3D } from './Scene3D.vue';
+
+/** 引擎工厂与三签名计算（组件外复用 / 单测用；SPEC §F.3） */
+export { computeSignatures, createSceneEngine } from './engine';
+export type { EngineDeps, EnterContext, SceneEngine } from './engine';
 
 /** 三签名（SPEC §F.3 🔒，逐字保留原语义 L3585-3591） */
 export const SCENE_SIGNATURE_SOURCES = {
@@ -18,9 +33,8 @@ export const SCENE_SIGNATURE_SOURCES = {
   labels: ['layout.rooms', 'ui.view3d.cut', 'plan.plan.id', 'plan.level'],
 } as const;
 
-/** t5 待实现的文件清单（SPEC §C.1） */
-export const SCENE3D_PENDING_MODULES = [
-  'Scene3D.vue',
+/** 已交付的模块清单（SPEC §C.1；`SCENE3D_PENDING_MODULES` 的完成态） */
+export const SCENE3D_MODULES = [  'Scene3D.vue',
   'engine.ts',
   'architecture.ts',
   'materials.ts',
@@ -30,7 +44,16 @@ export const SCENE3D_PENDING_MODULES = [
   'walk.ts',
   'picking.ts',
   'labels.ts',
-  'furniture/*.ts',
+  'scene.ts',
+  'snap.ts',
+  'furniture/index.ts',
+  'furniture/shared.ts',
+  'furniture/content-colors.ts',
+  'furniture/bedroom.ts',
+  'furniture/living.ts',
+  'furniture/tables.ts',
+  'furniture/bath.ts',
+  'furniture/appliances.ts',
 ] as const;
 
 /** E.8 T4：切主题时**必须**更新的项（只更新材质/光照/曝光，不重建几何） */
@@ -48,3 +71,6 @@ export const SCENE_THEME_REACTIVE_FIELDS = [
   'skirtMat',
   'edgeMat',
 ] as const;
+
+/** 剖切两档（SPEC §D.4 / OF §3.4）与场景常量再导出，便于外部按档位调 `ui.set3dOption('cut', …)` */
+export { CUT_FULL, CUT_LOW, LAYER_HEIGHT, SHOT_FILENAME } from './scene';

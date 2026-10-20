@@ -19,7 +19,7 @@ import { BATH_BUILDERS } from './bath';
 import { BEDROOM_BUILDERS } from './bedroom';
 import { LIVING_BUILDERS } from './living';
 import { KITCHEN_BUILDERS } from './tables';
-import { makeSpec, placeFurniture, type FurnitureBuildDeps, type FurnSpec } from './shared';
+import { makeSpec, placeFurniture, createFurnitureDeps, type FurnitureBuildDeps, type FurnSpec } from './shared';
 
 /** 全部类型 → 构建函数（45 个类型） */
 export const FURNITURE_BUILDERS: Record<string, (spec: FurnSpec) => void> = {
@@ -46,7 +46,7 @@ export function buildFurniture(f: Furniture, deps: FurnitureBuildDeps): Group {
   return spec.group;
 }
 
-export { makeSpec, placeFurniture };
+export { createFurnitureDeps, makeSpec, placeFurniture };
 export type { FurnitureBuildDeps, FurnSpec } from './shared';
 
 /** 便于类型标注（构建结果一定是 `Group`） */

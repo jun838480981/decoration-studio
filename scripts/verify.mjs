@@ -138,6 +138,56 @@ const HEX_WHITELIST = [
 
 const HEX_PATTERN = /#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/;
 
+/**
+ * 剥离注释后再做 hex 扫描（C-7 修复）。
+ *
+ * 为什么必须剥离：闸门最初按「整行原文」匹配，于是把
+ * ① 注释里为追溯来源而引用的原 HTML 色值（如 content-colors.ts 的 `'#2a2724'`）；
+ * ② CSS 选择器里的 `#fab` 这类 id 选择器（会被 `{3,4}` 分支误判成 3 位 hex）
+ * 都算成「硬编码色值」，产生假阳性，逼下游删掉有价值的来源注释。
+ * 真实缺陷（代码体里的字面色值）仍然必须被拦下 —— 见本文件底部的两向自测。
+ */
+function stripComments(source, ext) {
+  // 关键：把注释替换为**等量换行**，保持行号与原文一致，否则报错行号会偏移、难以定位。
+  const keepNewlines = (text) => text.replace(/[^\n]/g, '');
+  let out = source;
+  // 块注释 /* ... */
+  out = out.replace(/\/\*[\s\S]*?\*\//g, (m) => keepNewlines(m));
+  // 行注释 // ...（前面不是冒号，避免误伤 url(https://…)）
+  out = out.replace(/(^|[^:])(\/\/[^\n]*)/g, (_m, pre, comment) => pre + keepNewlines(comment));
+  // .vue 模板注释
+  if (ext === 'vue') out = out.replace(/<!--[\s\S]*?-->/g, (m) => keepNewlines(m));
+  return out;
+}
+
+/**
+ * CSS 选择器形态的 `#id` 不是颜色。
+ * 仅当 `#` 后的标识符**不像** 3/4/6/8 位纯十六进制时才剥离，避免漏掉真实色值。
+ */
+function stripIdSelectors(source) {
+  // 歧义点：`#fab` / `#abc` / `#def` 这类既是合法 3 位 hex，也常被用作 id 选择器。
+  // 判据（按优先级）：
+  //  ① 后随选择器分隔符（`,` `{` `}` `[` `)` `>` `+` `~`）→ 视为 id 选择器，剥离；
+  //  ② 其余按「像 hex 就保留」，宁可误报也不漏报真实色值。
+  return source.replace(/#([A-Za-z_][\w-]*)/g, (match, body, offset, whole) => {
+    const isHexChars = /^[0-9a-fA-F]+$/.test(body) && [3, 4, 6, 8].includes(body.length);
+    if (!isHexChars) return '';
+    const after = whole.slice(offset + match.length);
+    if (/^\s*[,{}\[)\]>+~]/.test(after)) return '';
+    return match;
+  });
+}
+
+/** 逐行扫描 hex，返回违规行号（1-based） */
+function findHexViolations(source, ext) {
+  const cleaned = stripIdSelectors(stripComments(source, ext));
+  const violations = [];
+  cleaned.split(/\r?\n/).forEach((line, index) => {
+    if (HEX_PATTERN.test(line)) violations.push(index + 1);
+  });
+  return violations;
+}
+
 /** store / theme 必须保留的冻结标识（SPEC §D 🔒；改名即 RISK-01） */
 const REQUIRED_IDENTIFIERS = {
   'src/stores/plan.ts': [
@@ -315,8 +365,11 @@ function collectExportedNames(source) {
 /** 收集 `import { a, b as c, type D } from 'spec'` 里的**被导入名**（忽略 default / namespace 导入） */
 function collectImports(source) {
   const out = [];
+  // 先剥离注释：文档注释里常写「下游统一 `import { useXxxStore } from '@/stores'`」这类示例，
+  // 若不剥离会被当成真实 import 而误报「未定义的符号」（C-1 守卫的假阳性来源之一）。
+  const clean = stripComments(source, 'ts');
   const importRe = /import\s+(?:type\s+)?(?:[A-Za-z_$][\w$]*\s*,?\s*)?\{([^}]*)\}\s*from\s*['"]([^'"]+)['"]/g;
-  for (const match of source.matchAll(importRe)) {
+  for (const match of clean.matchAll(importRe)) {
     const names = match[1]
       .split(',')
       .map((piece) =>
@@ -642,13 +695,32 @@ check('hex 白名单：十六进制只出现在 theme/**、patterns.ts、data/ma
     const rel = relative(ROOT, file).split('\\').join('/');
     if (!/\.(ts|vue|css)$/.test(rel)) continue;
     if (HEX_WHITELIST.some((allowed) => rel.startsWith(allowed))) continue;
-    const lines = readFileSync(file, 'utf8').split(/\r?\n/);
-    lines.forEach((line, index) => {
-      if (HEX_PATTERN.test(line)) violations.push(`${rel}:${index + 1}`);
-    });
+    // 测试文件豁免：`.spec.ts` 里的色值是**测试夹具**（用于断言渲染/导出结果），
+    // 不是产品配色来源，不应受"色值必须走令牌"的约束（否则会逼测试删掉有意义的假数据）。
+    if (/\.spec\.ts$/.test(rel)) continue;
+    const ext = rel.endsWith('.vue') ? 'vue' : rel.endsWith('.css') ? 'css' : 'ts';
+    // 剥离注释与 #id 选择器后再判（C-7：避免把来源注释 / CSS 选择器误判为硬编码色值）
+    for (const lineNo of findHexViolations(readFileSync(file, 'utf8'), ext)) {
+      violations.push(`${rel}:${lineNo}`);
+    }
   }
   assert(violations.length === 0, `非白名单文件出现 hex：${violations.join(', ')}`);
   return '0 处越界';
+});
+
+// C-7 两向自测：注释内 hex 不得报错；代码体内 hex 必须报错。
+check('hex 闸门两向自测：注释豁免、代码体拦截（C-7）', () => {
+  const commentOnly = '// 原值 #2a2724 仅作来源记录\nconst a = 1;\n/* #3c3a37 */';
+  assert(findHexViolations(commentOnly, 'ts').length === 0, '注释内的 hex 被误判为违规');
+  const selectorOnly = 'aside.open,#fab,[data-floating] { color: red }';
+  assert(findHexViolations(selectorOnly, 'css').length === 0, '#id 选择器被误判为 hex 色值');
+  const selectorInString = "el.closest('aside.open,#fab,[data-floating]')";
+  assert(findHexViolations(selectorInString, 'ts').length === 0, '字符串里的选择器文本被误判为 hex');
+  const realHex = "const c = '#2a2724';";
+  assert(findHexViolations(realHex, 'ts').length === 1, '代码体里的 hex 未被拦下');
+  const realHexVue = '<div :style="{ color: \'#fff\' }"></div>';
+  assert(findHexViolations(realHexVue, 'vue').length === 1, '.vue 模板里的 hex 未被拦下');
+  return '注释豁免 / 选择器豁免 / 代码体拦截 共 5 例通过';
 });
 
 check('SVG 呈现属性不得写 CSS 变量（B9 / R-EXP-1）', () => {
@@ -656,8 +728,10 @@ check('SVG 呈现属性不得写 CSS 变量（B9 / R-EXP-1）', () => {
   for (const file of walk(join(ROOT, 'src'))) {
     const rel = relative(ROOT, file).split('\\').join('/');
     if (!/^(src\/features\/plan2d|src\/features\/extras)\/.*\.(ts|vue)$/.test(rel)) continue;
-    const lines = readFileSync(file, 'utf8').split(/\r?\n/);
-    lines.forEach((line, index) => {
+    const ext = rel.endsWith('.vue') ? 'vue' : 'ts';
+    // 同样先剥离注释：注释里说明「为什么不写 var(--ds-…)」不应被当成违规
+    const cleaned = stripComments(readFileSync(file, 'utf8'), ext);
+    cleaned.split(/\r?\n/).forEach((line, index) => {
       if (/(fill|stroke|stop-color|flood-color|color)\s*[=:]\s*['"]var\(--ds-/.test(line)) {
         violations.push(`${rel}:${index + 1}`);
       }
@@ -747,6 +821,28 @@ check('对比度断言表覆盖 SPEC §E.7 必测组合', () => {
   assert(missing.length === 0, `断言表缺少：${missing.join(', ')}`);
   assert(/PLAN_TOKEN_NAMES/.test(source), '断言表未覆盖 2D 图纸令牌（§E.7 第 13 条）');
   return `${REQUIRED_ASSERTION_IDS.length} 组必测 + 2D 令牌`;
+});
+
+check('装饰豁免清单是封闭 4 项，且矮墙描边仍在断言集（RISK-17 / C-2）', () => {
+  const tokens = read('src/theme/tokens.ts');
+  const block = tokens.match(/export const DECORATIVE_TOKEN_NAMES[^=]*=\s*\[([\s\S]*?)\];/);
+  assert(block, 'tokens.ts 中找不到 DECORATIVE_TOKEN_NAMES 数组字面量');
+  const names = [...block[1].matchAll(/'([a-z0-9-]+)'/g)].map((m) => m[1]).sort();
+  assert(
+    JSON.stringify(names) === JSON.stringify(['border', 'plan-grid-major', 'plan-grid-minor', 'wall-low']),
+    `装饰豁免清单必须恰好是 border / plan-grid-minor / plan-grid-major / wall-low（当前：${names.join(', ')}）`,
+  );
+  // 矮墙**描边**承载语义：必须仍在 2D 令牌集里（从而被 contrast.ts 的生成器纳入断言）
+  assert(
+    /PLAN_ONLY_TOKEN_NAMES[\s\S]*?'wall-low-stroke'/.test(tokens),
+    'PLAN_ONLY_TOKEN_NAMES 必须包含 wall-low-stroke（C-2：只豁免填充，描边照常断言 ≥3:1）',
+  );
+  const contrast = read('src/theme/contrast.ts');
+  assert(
+    /DECORATIVE_TOKEN_NAMES\.includes\(name\)/.test(contrast),
+    'contrast.ts 的 2D 断言生成器必须按 DECORATIVE_TOKEN_NAMES 过滤（否则 wall-low 填充会被拿去断言 ≥3）',
+  );
+  return '4 项豁免 + wall-low-stroke 仍在断言集';
 });
 
 check('持久化键逐字冻结（SPEC §D.8）', () => {

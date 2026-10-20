@@ -71,10 +71,12 @@ export const PANES_DEFAULT: PanesState = { hideLib: false, hidePanel: false };
  * 非布尔值一律回落到默认值（坏数据不抛错，与 `readJson` 的静默降级一致）。
  */
 function loadPanes(): PanesState {
+  // SPEC §K.3 第 6 条：启动时 `readJson(STORAGE_KEYS.panes, { hideLib: false, hidePanel: false })`
   const raw = readJson<Partial<PanesState> | null>(STORAGE_KEYS.panes, null);
+  const value: Partial<PanesState> = raw ?? {};
   return {
-    hideLib: raw && typeof raw.hideLib === 'boolean' ? raw.hideLib : PANES_DEFAULT.hideLib,
-    hidePanel: raw && typeof raw.hidePanel === 'boolean' ? raw.hidePanel : PANES_DEFAULT.hidePanel,
+    hideLib: typeof value.hideLib === 'boolean' ? value.hideLib : PANES_DEFAULT.hideLib,
+    hidePanel: typeof value.hidePanel === 'boolean' ? value.hidePanel : PANES_DEFAULT.hidePanel,
   };
 }
 
@@ -111,6 +113,7 @@ export const useUiStore = defineStore('ui', () => {
   const viewMode = ref<'2d' | '3d'>('2d');
   /** 3D 选项默认值（原 L2694，SPEC §D.7 冻结） */
   const view3d = reactive<View3dOptions>({ cut: 2.8, furn: true, labels: true, night: false, hour: 10, mode: 'orbit' });
+  /** 抽屉开合：初值来自 `huxing-panes`（读不到时 = 两侧栏展开，原 L1447；SPEC §D.7 冻结） */
   const panes = reactive<PanesState>(loadPanes());
   const switching = ref(false);
 
@@ -248,6 +251,7 @@ export const useUiStore = defineStore('ui', () => {
    * 因此这里不需要额外 try/catch，也不改变 `openDrawer` 的冻结签名与 `panes` 的字段名/初值。
    */
   function openDrawer(which: 'lib' | 'panel' | null, open = true): void {
+    if (which === null) return;
     if (which === 'lib') panes.hideLib = !open;
     if (which === 'panel') panes.hidePanel = !open;
     writeJson(STORAGE_KEYS.panes, { hideLib: panes.hideLib, hidePanel: panes.hidePanel });
