@@ -1,0 +1,91 @@
+/**
+ * 全局基础样式。
+ *
+ * ⛔ 本文件（以及任何 `src/**`）不允许出现十六进制色值（SPEC §C.2 B3）：
+ *    所有颜色都走 `--ds-*` 变量，由 `theme/applyTheme.ts` 在启动/切换主题时写入。
+ *    `var(--ds-bg, Canvas)` 里的 `Canvas` 是 CSS **系统颜色关键字**，只作为「JS 尚未执行」时的兜底，
+ *    不是第二个色值来源。
+ * 原实现的 `:root{--bg:…--teal:…}`（L12-15）与散落硬编码已全部收敛到令牌（SPEC §E.6）。
+ */
+
+:root {
+  color-scheme: var(--ds-color-scheme, light);
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--ds-bg, Canvas);
+  color: var(--ds-text, CanvasText);
+  overscroll-behavior: none;
+  touch-action: manipulation;
+  font: 13px/1.5 -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+}
+
+#app {
+  height: 100%;
+}
+
+input,
+button,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 5px 9px;
+  white-space: nowrap;
+}
+
+button:focus-visible,
+[tabindex]:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--ds-focus-ring, Highlight);
+  outline-offset: 2px;
+}
+
+button:hover {
+  background: var(--ds-accent-soft, transparent);
+}
+
+code,
+kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  background: var(--ds-surface-2, transparent);
+  border: 1px solid var(--ds-border, transparent);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+a {
+  color: var(--ds-accent, LinkText);
+}
+
+::selection {
+  background: var(--ds-accent-soft, transparent);
+  color: var(--ds-text, CanvasText);
+}
+
+/* 减小动效偏好：尊重系统设置（可访问性） */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

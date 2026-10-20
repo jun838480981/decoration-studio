@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <!-- 与原实现（装修设计.html L5）保持一致：禁双指缩放，适配刘海屏 -->
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"
+    />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="description" content="装修设计工作台：户型平面 / 3D 场景 / 算量与导出" />
+    <title>户型装修设计</title>
+    <!--
+      注意（SPEC §C.2 B3）：本文件不允许出现十六进制色值，`theme-color` 之类的颜色元信息由
+      `src/theme/applyTheme.ts` 在运行时写入（单一色值来源 = `src/theme/tokens.ts`）。
+    -->
+  </head>
+  <body>
+    <div id="app"></div>
+    <noscript>本应用需要启用 JavaScript。</noscript>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

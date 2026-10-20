@@ -1,0 +1,62 @@
+{
+  "name": "decoration-studio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "装修设计工作台（Vue3 + Vite + TS 迁移工程）：2D 平面编辑 / 3D 场景 / 算量与导出",
+  "license": "MIT",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit -p tsconfig.json && vite build",
+    "preview": "vite preview",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.json",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"src/**/*.{ts,vue,css}\" \"scripts/**/*.mjs\" \"*.{json,ts,js,md}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,vue,css}\" \"scripts/**/*.mjs\" \"*.{json,ts,js,md}\"",
+    "verify": "node scripts/verify.mjs"
+  },
+  "dependencies": {
+    "@material/material-color-utilities": "^0.4.0",
+    "@vueuse/core": "^15.0.0",
+    "colorjs.io": "^0.7.1",
+    "dxf-writer": "^1.18.4",
+    "earcut": "^3.2.4",
+    "exceljs": "^4.4.0",
+    "papaparse": "^5.7.0",
+    "pinia": "^4.1.0",
+    "polygon-clipping": "0.15.7",
+    "three": "0.160.1",
+    "vue": "^3.5.0",
+    "vue-i18n": "^11.4.16"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.0",
+    "@types/node": "^22.10.0",
+    "@types/papaparse": "^5.3.16",
+    "@types/three": "^0.160.0",
+    "@vitejs/plugin-vue": "^6.0.0",
+    "@vue/test-utils": "^2.4.6",
+    "eslint": "^9.30.0",
+    "eslint-config-prettier": "^10.1.0",
+    "eslint-plugin-vue": "^10.3.0",
+    "jsdom": "^26.0.0",
+    "prettier": "^3.5.0",
+    "typescript": "~5.9.0",
+    "typescript-eslint": "^8.35.0",
+    "vite": "^7.0.0",
+    "vitest": "^3.2.0",
+    "vue-tsc": "^3.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

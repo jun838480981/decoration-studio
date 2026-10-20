@@ -1,0 +1,84 @@
+/**
+ * 打印友好样式（P1-4，SPEC §B.2）。
+ *
+ * 三条设计决定（写给 reviewer）：
+ * 1. **本文件不含任何色值**（SPEC §C.2 B3）：打印的外观跟随当前主题令牌（`--ds-*`），
+ *    "打印要浅色"由主题预设解决（切到日间），⛔ 不在打印 CSS 里复制第二套颜色。
+ * 2. 通过**稳定属性钩子**控制显隐与分页，组件只写属性、⛔ 不写颜色：
+ *    `[data-print-hide]` 打印时隐藏、`[data-print-break]` 强制分页、`[data-print-section]` 避免跨页断开、
+ *    `.ds-print-only` 仅打印时显示。
+ * 3. `print-color-adjust: exact` 保证表格斑马纹/浅底色能印出来（否则浏览器会"省墨"丢色）。
+ */
+
+/* 仅打印时显示的内容（屏幕上看不到） */
+.ds-print-only {
+  display: none;
+}
+
+@page {
+  size: A4;
+  margin: 12mm;
+}
+
+@media print {
+  html,
+  body {
+    background: Canvas;
+    height: auto;
+    overflow: visible;
+  }
+
+  [data-print-hide],
+  [data-print-hide] * {
+    display: none !important;
+  }
+
+  .ds-print-only {
+    display: block !important;
+  }
+
+  /* 面板/卡片：打印时不再滚动、不再受视口高度限制 */
+  [data-print-scroll] {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  [data-print-break] {
+    break-before: page;
+    page-break-before: always;
+  }
+
+  [data-print-section] {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+  }
+
+  th,
+  td {
+    border-bottom: 1px solid;
+    padding: 3px 6px;
+    text-align: start;
+    vertical-align: top;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  button,
+  input,
+  select {
+    display: none !important;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
