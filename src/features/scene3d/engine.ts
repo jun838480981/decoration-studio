@@ -15,6 +15,7 @@ import {
   ACESFilmicToneMapping,
   Clock,
   Group,
+  type Mesh,
   Scene,
   WebGLRenderer,
 } from 'three';
@@ -172,8 +173,37 @@ export interface SceneEngine {
    * 组件/测试用它确认「未激活时不重建」这条契约确实生效。
    */
   isDirty: () => boolean;
+  /**
+   * **场景内容统计**（只读诊断，供测试断言「几何是否真的被建出来」）。
+   *
+   * 为什么需要它：D-A / D-B 两个缺陷都是「所有自动化检查全绿，但 3D 里一个几何都没有」。
+   * 单测只能验证「函数被调用」「返回值正确」，验证不了「场景里真的有 mesh」。
+   * 有了这个统计，测试就能断言：
+   *   - 进入 3D 后 `archMeshes > 0`（建筑真的建了）
+   *   - 复式户型的 `archMeshes` 与单层同量级（当前层没被漏掉）
+   *   - 切换户型后 `signature` 变化且 `archMeshes` 重新计数
+   *
+   * ⛔ 只读：不修改任何状态，不影响渲染。生产环境也可安全调用（开销是一次 traverse）。
+   */
+  stats: () => SceneStats;
   /** 供 `Scene3DApi` 直接注册的实现对象 */
   api: Scene3DApi;
+}
+
+/** 场景内容统计（`stats()` 的返回，供测试与调试用） */
+export interface SceneStats {
+  /** 建筑层（墙/窗/门/楼板/天花）的 mesh 数 */
+  archMeshes: number;
+  /** 家具层的 mesh 数 */
+  furnMeshes: number;
+  /** 房间标签数 */
+  labels: number;
+  /** 碰撞盒数量（墙体数，用来交叉验证） */
+  colliders: number;
+  /** 当前建筑签名（切换户型后应变化） */
+  signature: string;
+  /** 当前是否处于 3D 活跃状态 */
+  active: boolean;
 }
 
 /* ======================= 实现 ======================= */
@@ -218,6 +248,39 @@ export function createSceneEngine(deps: EngineDeps): SceneEngine {
   let dirty = true;
   let initialized = false;
   const isActive = (): boolean => raf !== 0 && initialized;
+
+  /**
+   * 场景内容统计（只读诊断，供测试断言「几何是否真的建出来」）。
+   *
+   * 用 `traverse` 数 Mesh：`archFloor + archUp` 是建筑，`furnG` 是家具，`labelG` 是标签。
+   * 之所以按 Mesh 而不是按 Group 计数：Group 只是容器，空 Group 也会被创建，
+   * 只有 Mesh 才能证明「真的有几何体」。这正是 D-A/D-B 缺陷能逃过所有其它检查的原因。
+   */
+  function stats(): SceneStats {
+    let archMeshes = 0;
+    let furnMeshes = 0;
+    if (archGroups) {
+      archGroups.archFloor.traverse((o) => {
+        if ((o as Mesh).isMesh) archMeshes += 1;
+      });
+      archGroups.archUp.traverse((o) => {
+        if ((o as Mesh).isMesh) archMeshes += 1;
+      });
+    }
+    if (furnG) {
+      furnG.traverse((o) => {
+        if ((o as Mesh).isMesh) furnMeshes += 1;
+      });
+    }
+    return {
+      archMeshes,
+      furnMeshes,
+      labels: labelG ? labelG.children.length : 0,
+      colliders: archGroups ? archGroups.colliders.length : 0,
+      signature: sigArch,
+      active: isActive(),
+    };
+  }
 
   function bindingOf(presetId: ThemePresetId, night: boolean) {
     const base = SCENE_THEME_BINDINGS[presetId];
@@ -915,6 +978,8 @@ export function createSceneEngine(deps: EngineDeps): SceneEngine {
       if (!initialized) return;
       sync(true);
     },
+    // 只读诊断：供 E2E 断言「几何是否真的建出来」（D-A / D-B 缺陷的防护网）
+    stats: () => stats(),
   };
 
   return {
@@ -947,6 +1012,7 @@ export function createSceneEngine(deps: EngineDeps): SceneEngine {
     roomEntries: () => roomList(labelInput()),
     isActive,
     isDirty: () => dirty,
+    stats,
     api,
   };
 }

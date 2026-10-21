@@ -38,7 +38,9 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['src/**/*.spec.ts', 'tests/**/*.spec.ts'],
+    // 只跑单元测试（`src/**`）。E2E 在 `tests/e2e/**`，由 Playwright 跑（`pnpm test:e2e`）——
+    // 二者运行器不同，混在一起会让 vitest 试图加载 Playwright 的 `test()` 而报错。
+    include: ['src/**/*.spec.ts'],
     globals: false,
     restoreMocks: true,
   },

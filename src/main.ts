@@ -59,6 +59,29 @@ app.mount('#app');
 void import('@/features/scene3d');
 
 /**
+ * 测试诊断挂载点（**只读**，不影响生产行为）。
+ *
+ * 暴露 3D 场景的内容统计，供 `tests/e2e/scene-state.spec.ts` 断言
+ * 「几何是否真的被建出来」。这是 D-A / D-B 这类**装配缺陷**的唯一可靠检出手段：
+ * 它们的特点是所有单测 / lint / 类型检查全绿，但场景里一个 mesh 都没有。
+ *
+ * 设计取舍：
+ * - **始终挂载**（含生产构建）：E2E 测的是 `dist/` 产物，若只在 DEV 挂载就测不到；
+ * - 用 `__DSH_` 前缀 + `Object.defineProperty`（不可枚举、不可写），
+ *   避免与页面业务代码或第三方库重名；
+ * - 函数体只有一次 `stats()` 调用（traverse 计数），不订阅、不持有引用、不修改状态，
+ *   调用方不调它就没有任何开销。
+ */
+void import('@/utils/scenePort').then(({ getScene3DApi }) => {
+  Object.defineProperty(window, '__DSH_SCENE_STATS__', {
+    configurable: true,
+    enumerable: false,
+    writable: false,
+    value: () => getScene3DApi()?.stats?.() ?? null,
+  });
+});
+
+/**
  * 亮点层挂载位装配（`extras-toolbar` / `extras-overlay`）。
  *
  * 与 3D 同一模式：注册动作内聚在 `features/extras/index.ts` 顶层，这里只触发副作用导入。

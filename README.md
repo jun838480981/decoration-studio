@@ -574,12 +574,33 @@ A：点顶栏「EN / 中文」按钮切换。
 pnpm dev            # 开发服务器 :5173
 pnpm build          # 类型检查 + 生产构建
 pnpm preview        # 预览构建产物 :4173
-pnpm test           # 单元测试（203 项，含主题对比度断言）
+pnpm test           # 单元测试（216 项，含主题对比度与场景状态断言）
+pnpm test:e2e       # E2E 测试（7 项，真实浏览器，需先 pnpm build）
+pnpm test:e2e:ui    # E2E 交互式调试
 pnpm typecheck      # 只做类型检查
 pnpm lint           # ESLint（含模块边界规则 B1–B9）
 pnpm format         # Prettier 格式化
 pnpm verify         # 工程自检（20 项静态闸门，零依赖）
 ```
+
+### 测试分层
+
+项目有**三层**验证，各有明确分工：
+
+| 层 | 命令 | 环境 | 抓什么 |
+| --- | --- | --- | --- |
+| **静态闸门** | `pnpm verify` | 纯 Node | 目录结构、依赖白名单、颜色令牌、hex 越界、导入可解析 |
+| **单元测试** | `pnpm test` | node / jsdom | 签名计算、store 契约、主题对比度、组件接线 |
+| **E2E** | `pnpm test:e2e` | 真实 Chrome | **渲染结果**：几何是否真的建出来、切换户型是否重建 |
+
+> **为什么需要 E2E**：项目曾出现两类「所有自动化检查全绿但功能是错的」缺陷：
+> ① 3D 视图打不开（`registerViewMount` 从未调用）；
+> ② 复式户型 3D 里一个几何都没有（引擎用了 `plan` 而非 `plan.levelData`）。
+> 这两类**装配缺陷**只有读真实场景状态才能发现。E2E 用 `window.__DSH_SCENE_STATS__`
+> 断言 `archMeshes > 0`、房间标签与当前户型匹配。
+>
+> 这些 E2E 测试做过**变异验证**：故意重新注入上述两个缺陷，测试会立刻失败
+> —— 证明它们真的能抓 bug，不是摆设。
 
 ### 验证脚本（`.tools/`，本地用，不入库）
 
@@ -588,6 +609,7 @@ node .tools/render-check.cjs          # 浏览器实渲染 8 项
 node .tools/audit-features.cjs        # 特色功能可用性 10 项
 node .tools/audit-keyboard.cjs        # 键盘可达性 5 项
 node .tools/verify-switch-content.cjs # 2D/3D 切换内容完整性 4 项
+node .tools/verify-3d-bidi.cjs        # 3D 双向验证 6 项
 node .tools/perf-switch.cjs           # 切换性能测量
 ```
 

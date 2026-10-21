@@ -67,4 +67,22 @@ export interface Scene3DApi {
   walking(): boolean;
   /** 语言切换后重建 CSS2D 标签（原 `relang`，L3890） */
   relabel(): void;
+  /**
+   * 场景内容统计（只读诊断，可选）。
+   *
+   * 供 E2E 断言「几何是否真的被建出来」。D-A / D-B 这类装配缺陷的特点是
+   * 所有单测 / lint / 类型检查全绿，但场景里一个 mesh 都没有——
+   * 只有读这个统计才能发现。声明为可选是因为测试替身可能不实现它。
+   */
+  stats?(): SceneStats;
+}
+
+/** 场景内容统计（与 `SceneEngine['stats']` 的返回一致） */
+export interface SceneStats {
+  archMeshes: number;
+  furnMeshes: number;
+  labels: number;
+  colliders: number;
+  signature: string;
+  active: boolean;
 }
