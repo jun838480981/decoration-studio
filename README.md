@@ -8,6 +8,24 @@
 > 技术栈：Vue 3 + Vite + TypeScript · 许可证 MIT · 开源仓库
 > <https://github.com/jun838480981/decoration-studio>
 
+## 📌 项目来源（个人学习项目）
+
+本项目是一个**个人学习项目**：把一份 MIT 许可的纯前端户型设计工具（单文件 `index.html`）
+重构为 **Vue 3 + Vite + TypeScript** 工程，用于学习现代前端工程化、three.js 3D 渲染、
+状态管理与设计系统。
+
+| 项 | 值 |
+| --- | --- |
+| **参考仓库** | <https://github.com/wy51ai/floorplan-3d> |
+| 上游描述 | 纯前端的户型装修设计工具（2D 平面 + Three.js 3D 场景） |
+| 上游许可 | **MIT**（2696 ★ / 553 fork） |
+| 本项目许可 | **MIT**（保留上游版权声明，见 `LICENSE`） |
+| 用途 | **个人学习**，非商业 |
+
+> 上游是单个 `index.html`（185 KB / 2675 行，无框架无构建）。本项目把它拆成
+> 141 个 TS/Vue 模块，补齐类型系统、测试分层、主题令牌与无障碍支持。
+> 完整的来源核实、功能差异、许可证合规说明见 **[`docs/ORIGIN.md`](docs/ORIGIN.md)**。
+
 ## 🔗 在线演示
 
 **<https://decoration-studio.netlify.app/>**
@@ -647,6 +665,7 @@ A：点顶栏「EN / 中文」按钮切换。
 
 | 文档 | 内容 |
 | --- | --- |
+| [`docs/ORIGIN.md`](docs/ORIGIN.md) | **项目来源**：上游仓库核实、与本地源文件的关系、使用目的、许可证合规、功能差异 |
 | [`docs/SPEC.md`](docs/SPEC.md) | **施工图**：类型/store 冻结契约、主题令牌表、2D↔3D 接口、依赖清单 |
 | [`docs/ORIGINAL-FEATURES.md`](docs/ORIGINAL-FEATURES.md) | 原 `装修设计.html` 的逐项功能盘点（带行号证据） |
 | [`docs/MIGRATION.md`](docs/MIGRATION.md) | 原功能 → 新模块的完整对照表 |
