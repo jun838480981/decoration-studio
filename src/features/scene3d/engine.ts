@@ -406,7 +406,13 @@ export function createSceneEngine(deps: EngineDeps): SceneEngine {
     buildArchitecture(
       archGroups,
       {
-        structure: plan.plan,
+        /*
+         * ⚠️ 用 `levelData`（当前层）而不是 `plan.plan`（整个户型）。
+         * 复式户型的顶层 `walls`/`rooms` 是空数组，真实数据在 `levels[]` 里；
+         * 用 `plan.plan` 会导致复式当前层一个几何都不建，只剩其它层被抬高绘制，
+         * 表现为「墙体悬空、与地面分离」（D-B 缺陷）。
+         */
+        structure: plan.levelData,
         roomMats: plan.roomMats,
         demolished: new Set(layout.demolished),
         cut: ui.view3d.cut,
@@ -457,17 +463,30 @@ export function createSceneEngine(deps: EngineDeps): SceneEngine {
     const ui = deps.readUi();
     setBounds(plan.bounds);
     const next = computeSignatures(plan, layout, ui);
+
+    /*
+     * 3D 不活跃（当前在 2D）时的关键分支。
+     *
+     * ⚠️ 这里**不能**先更新 `sigArch/sigFurn/sigLabels` 再返回。
+     * 历史缺陷（2026-10-21 实测定位）：`Scene3D.vue` 的 watch 在 2D 模式下也会触发 `sync()`，
+     * 若此时把签名「顺手」更新为新值，等用户真正切到 3D 时，`syncStaged()` 再比较就发现
+     * 「签名没变化」→ 跳过重建 → **3D 里残留上一个户型的几何**。
+     * 用户可见症状：切户型后 3D 场景还是旧户型（墙体与地面错位、悬空）。
+     *
+     * 正确做法：不活跃时只记 `dirty`，签名保持旧值；等 `enter()` 时再比较，
+     * 这样「2D 期间发生的任何变化」都能在进入 3D 时被正确检出并重建。
+     */
+    if (!isActive() && !force) {
+      dirty = dirty || next.arch !== sigArch || next.furn !== sigFurn || next.labels !== sigLabels;
+      return;
+    }
+
     const archChanged = force || next.arch !== sigArch;
     const furnChanged = force || next.furn !== sigFurn;
     const labelsChanged = force || next.labels !== sigLabels;
     sigArch = next.arch;
     sigFurn = next.furn;
     sigLabels = next.labels;
-    if (!isActive() && !force) {
-      // 3D 不活跃：只记 dirty，不重建（SPEC §F.3）
-      dirty = archChanged || furnChanged || labelsChanged;
-      return;
-    }
     dirty = false;
     if (archChanged) buildArchitectureNow();
     if (furnChanged) buildFurnitureNow();

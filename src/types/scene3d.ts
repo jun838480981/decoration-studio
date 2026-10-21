@@ -6,7 +6,7 @@
  * 解法 = 依赖倒置：接口定义在 `types/`（纯类型），实现在 `features/scene3d/`，
  * 注册通道放在 `utils/scenePort.ts`。3D 组件挂载时 `registerScene3D(api)`，卸载时 `registerScene3D(null)`。
  */
-import type { Plan } from './plan';
+import type { Plan, PlanStructure } from './plan';
 import type { View3dOptions } from './state';
 import type { ViewTransform } from './state';
 import type { Furniture } from './furniture';
@@ -15,6 +15,14 @@ import type { RoomOverride } from './state';
 /** `computeSignatures` 的入参切片：结构性类型，Pinia store 实例天然满足（SPEC §F.3） */
 export interface PlanSlice {
   plan: Plan;
+  /**
+   * **当前层**的结构数据：复式为 `plan.levels[level]`，单层为 `plan` 自身。
+   *
+   * 为什么需要它（D-B 缺陷的修复点）：复式户型的顶层 `walls`/`rooms` 是空数组，
+   * 真实数据在 `levels[]` 里（见 `data/presets/loft.ts`）。若 3D 直接用 `plan` 建几何，
+   * 复式当前层什么都建不出来，只剩其它层被抬高绘制 → 表现为「墙体悬空、与地面分离」。
+   */
+  levelData: PlanStructure;
   level: number;
   stairs: readonly unknown[];
 }

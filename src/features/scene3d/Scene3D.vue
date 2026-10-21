@@ -104,6 +104,17 @@ function createEngine(): SceneEngine | null {
     // §F.1：3D 只读 store，⛔ 不持有副本；每次读都取当前值
     readPlan: () => ({
       plan: plan.plan,
+      /**
+       * **当前层**的结构数据（复式 = `levels[level]`，单层 = `plan` 自身）。
+       *
+       * ⚠️ 历史缺陷（D-B，2026-10-21 实测定位）：引擎原先用 `plan.plan` 作为 `structure`，
+       * 但复式户型的数据在 `plan.levels[]` 里，**顶层 `walls`/`rooms` 是空数组**
+       * （见 `data/presets/loft.ts` 的 `walls: []` / `rooms: []`）。
+       * 结果：复式户型的 3D 里当前层的地面与墙体一个都不建，
+       * 只剩 `buildOtherLevels()` 把另一层墙体抬高到 y=2.9 画出来 →
+       * 视觉上就是「整层墙体悬在半空、与地面分离」。
+       */
+      levelData: plan.levelData,
       level: plan.level,
       stairs: plan.stairs,
       bounds: plan.bounds,
