@@ -10,6 +10,8 @@
  */
 import type { Bounds } from '@/types/geometry';
 import type { TokenResolver } from '@/types/theme';
+import type { DrawingSheetInput } from '@/utils/drawingSheetPort';
+import { buildSheetDocument, PAPER_SPECS, type SheetOptions } from './drawing-sheet';
 
 /** 渲染层组 id（与 `PlanCanvas.vue` 一致；导出时按 id 定位需要清空/替换的层） */
 export const SVG_LAYER_IDS = {
@@ -136,4 +138,137 @@ export async function exportPlanPng(options: PlanSvgExportOptions): Promise<bool
   if (!blob) return false;
   downloadBlob(`${EXPORT_BASENAME}.png`, blob);
   return true;
+}
+
+/* ======================= 施工图（带图框）导出 ======================= */
+
+/** 施工图导出选项：在图框参数基础上补平面图节点 */
+export interface PlanSheetExportOptions extends SheetOptions {
+  /** 渲染后的 `<svg>` 节点（同 `PlanSvgExportOptions.svg`） */
+  svg: SVGSVGElement;
+  /** 网格图层是否开启 */
+  gridOn?: boolean;
+  /** 位图宽度（px），默认按纸张比例换算 */
+  width?: number;
+}
+
+/**
+ * 把平面图节点序列化成「内部内容」（不含 `<svg>` 外壳），供图框拼装。
+ *
+ * 复用 `cloneForExport()` 的处理（清空选中/编辑层、替换背景、内联字体），
+ * 再取 `<svg>` 的子节点序列化结果——这样图框里的平面图与单独导出的图**完全一致**。
+ */
+function planInnerOf(options: PlanSheetExportOptions): string {
+  const clone = cloneForExport({
+    svg: options.svg,
+    bounds: options.bounds,
+    resolve: options.resolve,
+    gridOn: options.gridOn,
+  });
+  return Array.from(clone.childNodes)
+    .map((node) => new XMLSerializer().serializeToString(node))
+    .join('');
+}
+
+/** 导出带图框的 SVG 文本 */
+export function serializePlanSheet(options: PlanSheetExportOptions): string {
+  return buildSheetDocument(options, planInnerOf(options));
+}
+
+/** 导出带图框的 SVG 并下载 */
+export function exportPlanSheetSvg(options: PlanSheetExportOptions): void {
+  const text = serializePlanSheet(options);
+  downloadBlob(`${EXPORT_BASENAME}-施工图.svg`, new Blob([text], { type: 'image/svg+xml;charset=utf-8' }));
+}
+
+/** 导出带图框的 PNG 并下载（失败返回 `false`） */
+export async function exportPlanSheetPng(options: PlanSheetExportOptions): Promise<boolean> {
+  const text = serializePlanSheet(options);
+  const paper = PAPER_SPECS[options.paper];
+  // 按纸张物理比例换算像素：默认长边 3200px，保证打印清晰度
+  const width = options.width ?? 3200;
+  const height = Math.round((width * paper.height) / paper.width);
+
+  const blob = await new Promise<Blob | null>((resolvePromise) => {
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return resolvePromise(null);
+      ctx.drawImage(image, 0, 0, width, height);
+      canvas.toBlob((b) => resolvePromise(b));
+    };
+    image.onerror = () => resolvePromise(null);
+    image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(text)}`;
+  });
+  if (!blob) return false;
+  downloadBlob(`${EXPORT_BASENAME}-施工图.png`, blob);
+  return true;
+}
+
+/* ======================= 施工图导出端口（供 extras 调用） ======================= */
+
+/**
+ * 创建施工图导出端口实现。
+ *
+ * 由 `PlanCanvas.vue` 在挂载时创建并注册到 `utils/drawingSheetPort.ts`，
+ * 使 `features/extras`（导出菜单）能调用施工图导出而**不 import `features/plan2d`**
+ * （SPEC §C.2 B1/B2 边界）。
+ *
+ * @param deps 从 2D 侧注入的上下文（画布节点、包围盒、取色器）
+ */
+export function createDrawingSheetPort(deps: {
+  getSvg: () => SVGSVGElement | null;
+  getBounds: () => Bounds;
+  resolve: TokenResolver;
+  getGridOn: () => boolean;
+}): {
+  available: () => boolean;
+  toSvg: (input: DrawingSheetInput) => string | null;
+  toPng: (input: DrawingSheetInput) => Promise<Blob | null>;
+} {
+  const build = (input: DrawingSheetInput): PlanSheetExportOptions | null => {
+    const svg = deps.getSvg();
+    if (!svg) return null;
+    return {
+      svg,
+      bounds: deps.getBounds(),
+      resolve: deps.resolve,
+      gridOn: deps.getGridOn(),
+      paper: input.paper,
+      labels: input.labels,
+    };
+  };
+
+  return {
+    available: () => deps.getSvg() !== null,
+    toSvg: (input) => {
+      const options = build(input);
+      return options ? serializePlanSheet(options) : null;
+    },
+    toPng: async (input) => {
+      const options = build(input);
+      if (!options) return null;
+      const text = serializePlanSheet(options);
+      const paper = PAPER_SPECS[options.paper];
+      const width = 3200;
+      const height = Math.round((width * paper.height) / paper.width);
+      return new Promise<Blob | null>((resolvePromise) => {
+        const image = new Image();
+        image.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return resolvePromise(null);
+          ctx.drawImage(image, 0, 0, width, height);
+          canvas.toBlob((b) => resolvePromise(b));
+        };
+        image.onerror = () => resolvePromise(null);
+        image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(text)}`;
+      });
+    },
+  };
 }

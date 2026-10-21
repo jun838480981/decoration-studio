@@ -15,7 +15,7 @@
  * - `toMM(clientX, clientY)`：屏幕 → 户型坐标（家具库拖放落点用）；
  * - `fit()`：适应窗口（快捷键 `F` / 按钮）。
  */
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useLayoutStore } from '@/stores/layout';
 import { useUiStore } from '@/stores/ui';
 import { useResizeFit } from '@/composables/useResizeFit';
@@ -23,6 +23,10 @@ import { useStageInteraction, type StageHit } from '@/composables/usePointerPanZ
 import { useShortcuts } from '@/composables/useShortcuts';
 import { usePlanEditor } from './editing';
 import { useToastStore } from '@/stores/toast';
+import { usePlanStore } from '@/stores/plan';
+import { useTheme } from '@/theme/useTheme';
+import { registerDrawingSheetPort } from '@/utils/drawingSheetPort';
+import { createDrawingSheetPort } from './export-svg';
 import { PLAN_FONT_FAMILY } from './export-svg';
 import DefsLayer from './layers/DefsLayer.vue';
 import GridLayer from './layers/GridLayer.vue';
@@ -138,6 +142,34 @@ function fit(): void {
 // 全局快捷键（原 `keydown` 处理器，L1777-1810）：`F` 需要画布尺寸、`Enter` 需要编辑内核，
 // 所以在这里挂一次（`document` 级监听，由 `@vueuse/core` 自动解绑，B7）。
 useShortcuts({ fit, closeRoom: () => editor.closeRoom() });
+
+/**
+ * 注册「施工图导出端口」。
+ *
+ * `features/extras` 的导出菜单需要导出带图框的施工图，但它**不能 import `features/plan2d`**
+ * （SPEC §C.2 B1/B2：跨特性只能经 stores/types/utils/theme）。
+ * 因此由本组件在挂载时把实现注册到中立层 `utils/drawingSheetPort.ts`，
+ * extras 侧经端口调用——与 3D 的 `utils/scenePort.ts` 同一模式。
+ *
+ * 卸载时注销，避免 extras 拿到已卸载画布的悬空引用。
+ */
+const planStore = usePlanStore();
+const { resolve } = useTheme();
+
+onMounted(() => {
+  registerDrawingSheetPort(
+    createDrawingSheetPort({
+      getSvg: () => svgEl.value,
+      getBounds: () => planStore.bounds,
+      resolve,
+      getGridOn: () => ui.flags.grid,
+    }),
+  );
+});
+
+onBeforeUnmount(() => {
+  registerDrawingSheetPort(null);
+});
 
 defineExpose({
   svg: svgEl,

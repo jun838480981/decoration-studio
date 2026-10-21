@@ -99,6 +99,13 @@ const MESSAGES = {
   'export.png3d': ['导出 PNG（3D 截图）', 'Export PNG (3D screenshot)'],
   'export.svg': ['导出 SVG（矢量）', 'Export SVG (vector)'],
   'export.dxf': ['导出 DXF（CAD）', 'Export DXF (CAD)'],
+  'export.drawingSection': ['施工图纸（带图框）', 'Construction drawing (with frame)'],
+  'export.drawingSvg': ['施工图 SVG', 'Drawing SVG'],
+  'export.drawingPng': ['施工图 PNG', 'Drawing PNG'],
+  'export.drawingNote': [
+    '含图框、标题栏、指北针与比例尺，可直接交付施工方。仅 2D 视图可用。',
+    'Includes frame, title block, north arrow and scale bar — ready to hand off. 2D view only.',
+  ],
   'export.csv': ['导出 CSV（报价 / 清单）', 'Export CSV (cost / BOQ)'],
   'export.xlsx': ['导出 XLSX（报价 / 清单）', 'Export XLSX (cost / BOQ)'],
   'export.jsonPlan': ['导出当前户型 JSON', 'Export current plan JSON'],

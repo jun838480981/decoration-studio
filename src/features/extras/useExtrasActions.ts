@@ -40,6 +40,8 @@ import {
 } from './lib/export-json';
 import { buildPrintAlbum, requestPrint, suggestDayTheme } from './lib/print';
 import { PDF_EXPORT_AVAILABLE, buildPdfAlbum, pdfFileName } from './lib/export-pdf';
+import { getDrawingSheetPort, type DrawingSheetInput } from '@/utils/drawingSheetPort';
+import { PX_MM } from '@/stores/ui';
 import type { ExportKind, PlanDiffSummary, ValidationIssue } from '@/types/extras';
 import type { Plan, PlanStructure } from '@/types/plan';
 
@@ -69,6 +71,10 @@ export interface ExtrasActions {
   exportSvg: () => void;
   exportPng: () => Promise<void>;
   exportDxf: () => Promise<void>;
+  /** 施工图（带图框/标题栏/指北针/比例尺）SVG */
+  exportSheetSvg: () => void;
+  /** 施工图 PNG */
+  exportSheetPng: () => Promise<void>;
   exportCsv: () => void;
   exportXlsx: () => Promise<void>;
   exportPlanJson: () => void;
@@ -176,6 +182,78 @@ export function useExtrasActions(options: ExtrasActionsOptions = {}): ExtrasActi
     const result = downloadText(svgFileName(baseName.value), doc.text, 'image/svg+xml;charset=utf-8');
     if (result.ok) notify(result.name, 'svg');
     else fail(result.reason ?? 'unknown');
+  }
+
+  /**
+   * 组装图框文案（施工图导出用）。
+   *
+   * 字段来源：
+   * - 项目名：户型库里的方案名（用户可改名）
+   * - 比例：当前 2D 视图比例 `1/(view.s*PX_MM)`
+   * - 面积：套内使用面积（排除飘窗，与右侧面板同口径）
+   * - 日期：当天（ISO 日期）
+   */
+  function sheetInput(): DrawingSheetInput {
+    const en = lang.value === 'en';
+    return {
+      paper: 'a3',
+      labels: {
+        project: plan.plan.name || baseName.value,
+        plan: plan.levelName ?? plan.plan.name,
+        scale: `1:${Math.round(1 / (ui.view.s * PX_MM))}`,
+        date: new Date().toISOString().slice(0, 10),
+        area: `${layout.totalArea.toFixed(2)} m²`,
+        designer: en ? 'decoration-studio' : '装修设计工作台',
+        fields: {
+          project: en ? 'Project' : '项目',
+          plan: en ? 'Plan' : '户型',
+          scale: en ? 'Scale' : '比例',
+          date: en ? 'Date' : '日期',
+          area: en ? 'Area' : '面积',
+          designer: en ? 'Designer' : '设计',
+          north: en ? 'N' : '北',
+        },
+      },
+    };
+  }
+
+  function exportSheetSvg(): void {
+    // 经端口调用（⛔ 不 import features/plan2d，B1/B2 边界）
+    const port = getDrawingSheetPort();
+    if (!port?.available()) {
+      toast.push(t.value('export.no2dSvg'), 'warn');
+      return;
+    }
+    const text = port.toSvg(sheetInput());
+    if (!text) {
+      toast.push(t.value('export.no2dSvg'), 'warn');
+      return;
+    }
+    const name = `${baseName.value}-${lang.value === 'en' ? 'drawing' : '施工图'}.svg`;
+    const result = downloadText(name, text, 'image/svg+xml;charset=utf-8');
+    if (result.ok) notify(result.name, 'svg');
+    else fail(result.reason ?? 'unknown');
+  }
+
+  async function exportSheetPng(): Promise<void> {
+    const port = getDrawingSheetPort();
+    if (!port?.available()) {
+      toast.push(t.value('export.no2dSvg'), 'warn');
+      return;
+    }
+    busy.value = true;
+    try {
+      const blob = await port.toPng(sheetInput());
+      if (!blob) {
+        fail('png');
+        return;
+      }
+      const name = `${baseName.value}-${lang.value === 'en' ? 'drawing' : '施工图'}.png`;
+      downloadBlob(name, blob);
+      notify(name, 'png');
+    } finally {
+      busy.value = false;
+    }
   }
 
   async function exportPng(): Promise<void> {
@@ -377,6 +455,8 @@ export function useExtrasActions(options: ExtrasActionsOptions = {}): ExtrasActi
     exportSvg,
     exportPng,
     exportDxf,
+    exportSheetSvg,
+    exportSheetPng,
     exportCsv,
     exportXlsx,
     exportPlanJson,
