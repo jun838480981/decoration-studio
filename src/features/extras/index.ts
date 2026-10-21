@@ -13,6 +13,28 @@
  */
 export type { CostRow, ExportKind, Lang, PlanDiffSummary, ValidationIssue } from '@/types/extras';
 
+// ---- 视图挂载位自注册（SPEC §C.1 / composables/useViewMounts） ----
+import { registerViewMount } from '@/composables/useViewMounts';
+import ExtrasToolbarComponent from './ExtrasToolbar.vue';
+import ExtrasOverlayComponent from './ExtrasOverlay.vue';
+
+/**
+ * 把亮点层注册到 `App.vue` 的两个挂载位。
+ *
+ * ⚠️ 这是真实缺陷修复：此前**从未调用** `registerViewMount('extras-toolbar' | 'extras-overlay', …)`，
+ * 于是 `App.vue` 里的 `<component :is="ExtrasToolbar" v-if="ExtrasToolbar">` 永远是空，
+ * 页面上找不到任何亮点功能入口——命令面板（Ctrl+K）、导出菜单、平面图校验、方案对比、
+ * 历史面板全部不可达（浏览器实测 5/10 项失败）。
+ *
+ * 为什么放在 `index.ts` 而不是 `App.vue`：`App.vue` 归 2D 侧装配，
+ * 不能 import `features/extras/**`（SPEC §C.2 B2 边界）；由模块出口自注册可保持边界干净。
+ */
+export const ExtrasToolbar = ExtrasToolbarComponent;
+export const ExtrasOverlay = ExtrasOverlayComponent;
+
+registerViewMount('extras-toolbar', ExtrasToolbarComponent);
+registerViewMount('extras-overlay', ExtrasOverlayComponent);
+
 // ---- 组件（SPEC §C.1 的 6 个入口；全部按需引入，⛔ 不做全局注册） ----
 export { default as PlanCompare } from './PlanCompare.vue';
 export { default as CostReport } from './CostReport.vue';

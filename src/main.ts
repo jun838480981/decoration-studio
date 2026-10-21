@@ -57,3 +57,18 @@ app.mount('#app');
  *   （见 useViewMounts 注释「注册发生在 main.ts 之后也能补上」）。
  */
 void import('@/features/scene3d');
+
+/**
+ * 亮点层挂载位装配（`extras-toolbar` / `extras-overlay`）。
+ *
+ * 与 3D 同一模式：注册动作内聚在 `features/extras/index.ts` 顶层，这里只触发副作用导入。
+ *
+ * ⚠️ 这一行曾经**缺失**，导致 `App.vue` 的两个亮点挂载位永远为空——
+ * 命令面板（Ctrl+K）、导出菜单、平面图校验、方案对比、历史面板全部不可达，
+ * 而 `typecheck` / 203 单测 / lint / verify **全部通过**（它们都不检查「组件是否被挂载」）。
+ * 只有浏览器实测能发现（见 `.tools/audit-features.cjs`）。
+ *
+ * 用动态导入：亮点层含 exceljs / papaparse / dxf-writer（约 300KB），
+ * 不该拖慢首屏；注册完成后挂载位自动补渲染。
+ */
+void import('@/features/extras');
