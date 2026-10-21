@@ -1,14 +1,23 @@
 # decoration-studio（装修设计工作台）
 
 把单文件版 [`装修设计.html`](../装修设计.html)（3895 行）迁移为 **Vue 3 + Vite + TypeScript** 工程：
-2D 平面编辑 / 3D 场景 / 多方案管理 / 算量与导出。规格与契约见 [`docs/SPEC.md`](docs/SPEC.md)，
-原功能逐项盘点见 [`docs/ORIGINAL-FEATURES.md`](docs/ORIGINAL-FEATURES.md)。
+2D 平面编辑 / 3D 场景 / 多方案管理 / 算量与导出。
 
-> 本 README 的命令段落由 **t3（工程骨架）** 维护；`docs/MIGRATION.md` / `docs/ROADMAP.md` 由 t9 补齐。
+## 文档导航
+
+| 文档 | 内容 |
+| --- | --- |
+| [`docs/SPEC.md`](docs/SPEC.md) | **施工图**：类型/store 冻结契约、主题令牌表、2D↔3D 接口、依赖清单、裁决记录 |
+| [`docs/ORIGINAL-FEATURES.md`](docs/ORIGINAL-FEATURES.md) | 原 `装修设计.html` 的逐项功能盘点（带行号证据，含与 `.bak` 的差异清单） |
+| [`docs/MIGRATION.md`](docs/MIGRATION.md) | **原功能 → 新模块**的完整对照表，含已保留/已改进/已替换/未迁移及理由 |
+| [`docs/OSS-RESEARCH.md`](docs/OSS-RESEARCH.md) | 开源同类项目与可复用库调研（含实时核实的版本/许可证/活跃度） |
+| [`docs/THIRD-PARTY.md`](docs/THIRD-PARTY.md) | 第三方依赖登记（许可证、用途、是否可再分发） |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md) | 后续迭代路线图、技术债与「不做」清单 |
+| [`docs/VERIFY-T7-STATIC.md`](docs/VERIFY-T7-STATIC.md) | 一次独立静态验证的完整记录（含发现的问题） |
 
 ---
 
-## 1. 快速开始（命令)
+## 1. 快速开始（命令）
 
 在**工程根目录**（含 `package.json` 的那一层）执行：
 
@@ -27,63 +36,94 @@ pnpm verify           # 工程自检（零依赖、与 CWD 无关；见 §4）
 
 首次安装后可先跑 `pnpm verify`：它不依赖 `node_modules`，能在装依赖之前就发现目录/契约/白名单问题。
 
-### 1.1 本机 `pwsh` 不可用时的替代方式（**必读**）
+**当前验证状态**（2026-10-21 实测，全部通过）：
 
-本会话（Windows）`pwsh` 工具**完全不可用**：任何命令都返回 `exit code 3221225794`
-（`STATUS_DLL_INIT_FAILED`，DLL 初始化失败）。因此本项目**不假设**命令一定能跑通，规则如下
-（SPEC §G.1.1）：
+| 检查 | 结果 |
+| --- | --- |
+| `npx vue-tsc --noEmit -p tsconfig.json` | 0 错误 |
+| `npx vitest run` | 203/203 通过 |
+| `pnpm build` | 成功（290KB + 600KB，3D 独立分包） |
+| `node scripts/verify.mjs` | 全部通过（20 项） |
+| `npx eslint .` | 0 问题 |
+| 浏览器实渲染 | 8/8（见 §1.1） |
 
-1. **替代路径**：改用 DSH 自带 runtime 的**绝对路径**调用 node/pnpm（不依赖 `PATH`）：
+### 1.1 浏览器实渲染验证（可选，但强烈建议）
 
-   ```text
-   node:  C:\Users\Admin\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\node\bin\node.exe
-   pnpm:  C:\Users\Admin\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\pnpm\bin\pnpm.mjs
-   ```
+`pnpm build` 之后，可用本地脚本验证「页面真的能渲染」——这是**唯一能发现装配缺陷**的检查：
 
-   例（先 `cd` 到工程根目录，再执行）：
+```bash
+node .tools/render-check.cjs
+```
 
-   ```text
-   C:\Users\Admin\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\node\bin\node.exe ^
-     C:\Users\Admin\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\pnpm\bin\pnpm.mjs install
-   ```
+它会用本机 Chrome（不下载 Playwright 浏览器）起静态服务并断言 8 项：首屏可达、无 JS 错误、
+2D 图元数量、主题令牌注入、3D canvas 存在且非空白、亮点入口可见、中英切换生效。
 
-   若连 `node.exe` 也无法启动（本会话即如此：`pwsh` 连进程都起不来），见下一条。
+> 为什么需要它：本工程曾出现「`typecheck` + 203 单测 + `lint` + `verify` 全绿，但 3D 视图打不开」
+> 的缺陷（`registerViewMount` 从未被调用）。只有浏览器实渲染能发现（见 `docs/MIGRATION.md` §12）。
+>
+> `.tools/` 已被 `.gitignore` 忽略（本地验证脚本，不入库）。
 
-2. **标注「未验证」**：在报告/交付说明中明确写「**未验证**：`pwsh` 不可用（`STATUS_DLL_INIT_FAILED`），
-   命令未能执行」，并附上**应执行的命令原文**。⛔ **不得伪造输出**，也不得以「看起来通过」代替证据。
-   受影响的条目：`pnpm install / dev / build / test`、`pnpm-lock.yaml` 的实际版本、
-   `pnpm licenses list` 的实机结果（SPEC 待确认项 C10 / C11）。
+### 1.2 如果命令跑不起来：`pwsh` / `node` 启动失败的排查
 
-3. 全部脚本都**与 CWD 无关**：`package.json` 里没有任何 `cd`、也没有写死盘符；
-   `scripts/verify.mjs` 用 `import.meta.url` 推导工程根目录，在任何目录下执行都指向本工程。
+本项目开发过程中遇到过一种**环境级故障**，记录下来供排查参考：
 
-### 1.2 环境要求
+**症状**：任何命令都返回 `exit code 3221225794`（`0xC0000142` = `STATUS_DLL_INIT_FAILED`），
+连 `echo hi`、`node -v`、绝对路径 `node.exe` 都无输出。这不是命令写错，而是**进程创建失败**。
+
+**排查顺序**：
+
+1. 先试最简命令（`echo hi`）——若也失败，就是环境问题，不要再怀疑命令语法。
+2. 若处于沙箱/受限模式下，确认文件系统策略是否允许执行（本工程开发时切到 `danger-full-access` 后恢复）。
+3. 重启 DSH / 终端宿主进程。该故障是 OS 级的，与项目代码无关。
+
+**故障期间的替代方式**（若再次遇到）：改用 DSH 自带 runtime 的**绝对路径**调用，不依赖 `PATH`：
+
+```text
+node:  C:\Users\Admin\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\node\bin\node.exe
+pnpm:  C:\Users\Admin\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\pnpm\bin\pnpm.mjs
+```
+
+**纪律**：若命令确实无法执行，在报告里明确写「**未验证**」并附应执行的命令原文，
+⛔ **不得伪造输出**，也不得以「看起来通过」代替证据。
+
+> 当前状态（2026-10-21）：环境已恢复，上表六项检查均已**实机执行通过**。
+
+### 1.3 环境要求
 
 - Node `^20.19.0 || >=22.12.0`（Vite 7 的要求，见 `package.json` 的 `engines`）
-- pnpm（本仓库不提交 lockfile 之外的包管理器残留）
+- pnpm（`corepack enable` 可启用）
+- 浏览器实渲染验证需要本机 Chrome（`C:\Program Files\Google\Chrome\Application\chrome.exe`）
 
 ---
 
-## 2. 目录结构（冻结，SPEC §C.1）
+## 2. 目录结构（SPEC §C.1）
 
 ```text
 decoration-studio/
 ├─ index.html            vite.config.ts        tsconfig.json / tsconfig.node.json
 ├─ eslint.config.js      .prettierrc.json      .gitignore        LICENSE (MIT)
-├─ scripts/verify.mjs    与 CWD 无关的工程自检入口
-├─ docs/                 SPEC.md / ORIGINAL-FEATURES.md / OSS-RESEARCH.md / THIRD-PARTY.md
+├─ scripts/verify.mjs    与 CWD 无关的工程自检入口（20 项静态闸门）
+├─ docs/                 SPEC / ORIGINAL-FEATURES / MIGRATION / OSS-RESEARCH / THIRD-PARTY / ROADMAP
 └─ src/
-   ├─ main.ts  App.vue   入口与应用外壳（**骨架**，不是业务视图）
+   ├─ main.ts  App.vue   入口与应用外壳（装配 header/toolbar/2D/3D 挂载位/面板/弹窗）
    ├─ types/            纯类型：geometry / plan / furniture / material / state / persistence /
    │                    theme / scene3d / plan2d / extras（零运行时代码）
-   ├─ theme/             tokens.ts（**唯一色值来源**）/ material-palette.ts（**3D 取色唯一来源**）/
+   ├─ theme/            tokens.ts（**唯一色值来源**）/ material-palette.ts（**3D 取色唯一来源**）/
    │                    contrast.ts（colorjs.io 断言）/ applyTheme.ts / useTheme.ts / base.css
-   ├─ stores/           plan / layout / ui / theme / toast（SPEC §D 🔒 冻结签名）
-   ├─ utils/            persistence.ts（**唯一存储出口**）/ normalize.ts / geometry.ts / id.ts /
-   │                    scenePort.ts（3D 端口，依赖倒置）
-   ├─ composables/      usePointerKind.ts（COARSE / TAP_PX 单点定义）/ useResizeFit.ts
-   ├─ data/presets/     内置户型（**占位**，t4 实现 7 个内置户型）
-   └─ features/         plan2d/（t4）· scene3d/（t5）· extras/（t6）——本轮只放契约占位
+   ├─ stores/           plan / layout / ui / theme / toast（SPEC §D 🔒 冻结签名 + 契约闸门测试）
+   ├─ utils/            persistence.ts（**唯一存储出口**）/ normalize.ts / geometry.ts / measure.ts /
+   │                    auto-furnish.ts / id.ts / scenePort.ts（3D 端口，依赖倒置）
+   ├─ composables/      usePointerKind.ts（COARSE / TAP_PX 单点定义）/ usePointerPanZoom.ts /
+   │                    useShortcuts.ts / useResizeFit.ts / useViewMounts.ts / useAppLang.ts 等
+   ├─ data/             家具库（60 条目 / 45 类型）/ 材料表（8 种）/ 内置户型（7 个）/ 英文名映射
+   ├─ components/       AppHeader / ToolBar / FurnitureLibrary / PropertyPanel / PlanLibraryModal /
+   │                    FloorSwitcher / SelectionFab / ToastHost / dialogs
+   └─ features/
+      ├─ plan2d/         2D 平面编辑器：11 个图层组件 + PlanCanvas + 编辑/尺寸/图例/图案
+      ├─ scene3d/        3D 场景：engine / architecture / furniture（6 分组）/ camera / walk /
+      │                  lighting / picking / labels / materials / primitives + Scene3D.vue
+      └─ extras/         亮点层：报价单 / 方案对比 / 平面图校验 / 历史面板 / 主题切换 /
+                         命令面板 / 导出菜单（CSV·XLSX·DXF·PDF 接口·打印）
 ```
 
 **模块边界由 ESLint 强制**（`eslint.config.js` ↔ SPEC §C.2 B1–B9）：
@@ -100,7 +140,7 @@ decoration-studio/
 
 ---
 
-## 3. 主题体系（t3 交付的核心）
+## 3. 主题体系
 
 - **唯一色值来源**：`src/theme/tokens.ts`。三套预设 `day / night / contrast`，令牌键集合完全一致
   （`src/theme/tokens.spec.ts` 会断言），每套 **47 项**（`color-scheme` + 26 项 UI 语义 + 21 项 2D 图纸）。
@@ -161,50 +201,59 @@ const panelBg = cssVar('surface');            // '--ds-surface'（样式里用�
 
 ## 5. 依赖范围（SPEC §H.1 / ADR-14）
 
-**单一安装轮次**：t3 一次装齐收敛集，下游不得自行安装备选包。
+**单一安装轮次**：一次装齐收敛集，后续不得自行安装备选包。
 
-| 包 | 版本策略 | 用途 | 归属 |
-| --- | --- | --- | --- |
-| `vue` / `pinia` | `^3.5` / `^4.1.0` | 框架 / 状态（ADR-06：3 业务 + 2 横切 store） | t3 |
-| `@vueuse/core` | `^15.0.0`（同仓库子包已核实 `【待确认】`，SPEC C1） | 事件/全屏/存储/快捷键（B7） | t3/t6 |
-| `three` | **精确 `0.160.1`**（ADR-01，不随大流升级） | 3D 内核 | t5 |
-| `colorjs.io` | `^0.7.1` | 对比度**裁决**（只用于断言，ADR-04） | t3 |
-| `@material/material-color-utilities` | `^0.4.0`（Apache-2.0，保留 NOTICE） | 主题**派生**（tonal 色阶 / 一键换主题色） | t3 |
-| `vue-i18n` | `^11.4.16` | 国际化（替换 `tr()` + `data-en`，X4） | t4/t6 |
-| `papaparse` / `exceljs` | `^5.7.0` / `^4.4.0`（**动态 import**） | CSV / XLSX（P0-3） | t6 |
-| `dxf-writer` | `^1.18.4` | DXF 导出（P0-7） | t6 |
-| `polygon-clipping` | **精确 `0.15.7`**（禁 `^`） | 仅当真布尔必要时（P0-4/P2-5，ADR-15） | t6 |
-| `earcut` | `^3.2.4` | 三角化（P2-5） | P2 |
+| 包 | 版本策略 | 用途 |
+| --- | --- | --- |
+| `vue` / `pinia` | `^3.5` / `^4.1.0` | 框架 / 状态（ADR-06：3 业务 + 2 横切 store） |
+| `@vueuse/core` | `^15.0.0` | 事件/全屏/存储/快捷键（B7） |
+| `three` | **精确 `0.160.1`**（ADR-01，不随大流升级） | 3D 内核 |
+| `colorjs.io` | `^0.7.1` | 对比度**裁决**（只用于断言，ADR-04） |
+| `@material/material-color-utilities` | `^0.4.0`（Apache-2.0，保留 NOTICE） | 主题**派生**（tonal 色阶 / 一键换主题色） |
+| `vue-i18n` | `^11.4.16` | 国际化（替换 `tr()` + `data-en`，X4） |
+| `papaparse` / `exceljs` | `^5.7.0` / `^4.4.0`（**动态 import**） | CSV / XLSX（P0-3） |
+| `dxf-writer` | `^1.18.4` | DXF 导出（P0-7） |
+| `polygon-clipping` | **精确 `0.15.7`**（禁 `^`，最后发布 2023-12 且未过 1.0） | 仅当真布尔必要时（ADR-15） |
+| `earcut` | `^3.2.4` | 三角化（P2-5） |
 
 - ⛔ **不装**：`pdf-lib`（P1-1 未实现则整体不安装）、`postprocessing`（与 three 0.160 peer 冲突）、
   `@turf/*` 全家桶、`rbush`、`file-saver`、`html-to-image`、UI 组件库、`xlsx`(SheetJS CE)。
-- 依赖台账唯一权威：`docs/THIRD-PARTY.md`（t9 起由 spec-lead 接管，ADR-16）；lock 实际版本待安装后回填。
-- `devDependencies` 中的 `jsdom` 由 SPEC §H.3 的 `@vue/test-utils` 推出（组件测试需要 DOM 环境）；
-  若判定超范围可删除，`pnpm test` 仍可跑（现有用例都在 `node` 环境）。
+- **`pnpm.overrides`**：`esbuild` 锁定 `0.25.10`。原因：`esbuild@0.28.2` 在 Windows 上处理较大模块图时，
+  `vite:esbuild-transpile` 删除临时文件会报 `Access is denied`（文件句柄竞争），属工具链缺陷。
+- 依赖台账唯一权威：`docs/THIRD-PARTY.md`（含许可证与是否可再分发）。
+- `devDependencies` 中的 `jsdom` 由 `@vue/test-utils` 推出（组件测试需要 DOM 环境）。
 
 ---
 
-## 6. 本轮的边界与下一步
+## 6. 实现状态
 
-| 阶段 | 任务 | 内容 | 状态 |
-| --- | --- | --- | --- |
-| t1 | spec-lead | `docs/ORIGINAL-FEATURES.md` / `docs/SPEC.md` | ✅ 已完成 |
-| **t3** | **scaffold-dev** | **工程骨架 + `types/**` + `stores/**` 签名 + `theme/**`（令牌/派生/断言）+ 三路契约占位** | ✅ 本次交付 |
-| t4 | plan2d-dev | `features/plan2d/**`（10 图层、编辑、测量、拆改、自动布置、导出 SVG）+ `components/FurnitureLibrary/PropertyPanel` | 待开工 |
-| t5 | scene3d-dev | `features/scene3d/**`（程序化建筑/家具、剖切、漫游、日照、标签、三签名重建、主题联动） | 待开工 |
-| t6 | features-dev | `features/extras/**`（P0-1…P0-9、P1-2/P1-3/P1-4；P1-1 PDF 视成本可选） | 待开工 |
-| t7 / t8 | verifier / reviewer | 独立验证报告 / 分级问题清单 | 待开工 |
-| t9 | spec-lead | `README`/`MIGRATION`/`ROADMAP` 收口 + lock 版本回填 | 待开工 |
-| t10 | scaffold-dev | `git init -b main` + 首次**中文**提交 + 首次推送（先排查 `.gitconfig` 的 `insteadOf` 重写） | 待开工 |
+**全部计划内的功能已实现并通过验证**（详见 `docs/MIGRATION.md` 的逐项对照表）：
 
-### 6.1 本骨架**没有**实现的东西（避免误读）
+| 模块 | 内容 | 状态 |
+| --- | --- | --- |
+| 规格 | `docs/ORIGINAL-FEATURES.md` / `docs/SPEC.md`（契约冻结 + 裁决记录 §K） | ✅ |
+| 工程骨架 | 类型、store 契约、主题令牌系统（3 预设 × 47 令牌） | ✅ |
+| 2D 平面编辑器 | 11 个图层组件、编辑/测量/拆改、吸附、撤销重做、多方案、结构编辑、自动布置 | ✅ |
+| 3D 场景 | 程序化建筑与家具（46 类型）、鸟瞰/漫游、门开合、日照/夜景、剖切、标签、截图 | ✅ |
+| 亮点层 | 报价单（CSV/XLSX/DXF/打印）、方案对比、平面图校验、历史面板、主题切换、命令面板 | ✅ |
+| 收尾 | `docs/MIGRATION.md` / `docs/ROADMAP.md` / 本 README | ✅ |
 
-- 没有任何业务视图：`App.vue` 只是外壳 + 主题令牌预览（用于人眼核对换肤与 `resolve()` 字面值）。
-- `stores/**` 的动作**签名齐全但对业务语义留空**：涉及几何口径的 getter（面积/报价/拆除长度）、
-  `autoFurnish`、`pushOut`、`migrateLegacy`、`planEdit` 的 bounds 重算、4 种导入形态等，
-  都在代码里以 `TODO(t4)` 明确标注，当前不抛错、不破坏用户数据。
-- `data/presets` 是空占位（`PRESETS = []`），`features/**` 只有契约常量与 3 个签名占位。
-- 依赖安装与构建：**未验证**（见 §1.1；本会话 `pwsh` 与 `node.exe` 都无法启动）。
+### 6.1 明确未实现的一项（避免误读）
+
+**PDF 矢量图册**：`src/features/extras/lib/export-pdf.ts` 中 `PDF_EXPORT_AVAILABLE = false`，
+依赖 `pdf-lib` / `@pdf-lib/fontkit` **未安装**（SPEC §H.1 规定「未实现则不安装」）。
+代码只提供 `buildPdfAlbum(album, { renderer })` 注入点，**不伪造任何 PDF 字节流**。
+
+替代路径是**打印**（`print.ts` + `print.css`）：用户「打印 → 另存为 PDF」可得到同样的图册内容。
+启用步骤见 `docs/ROADMAP.md` §1.1。
+
+### 6.2 已知技术债
+
+见 `docs/ROADMAP.md` §4。最值得注意的三条：
+
+1. **无 E2E 测试** —— 曾出现「四项自动化检查全绿但 3D 打不开」的缺陷，只有浏览器实渲染能发现。
+2. `localStorage` 5MB 配额 —— 多方案 + 大户型可能撞墙，建议迁 IndexedDB。
+3. `three@0.160.1` 较旧 —— 升级才能用 `postprocessing`，但需回归 3D 全部功能。
 
 ---
 
@@ -212,3 +261,4 @@ const panelBg = cssVar('surface');            // '--ds-surface'（样式里用�
 
 本项目以 **MIT** 发布（见 `LICENSE`）。依赖许可证一律 MIT / ISC / Apache-2.0 / BSD / Zlib / CC0；
 ⛔ GPL / AGPL 与**无 license 字段**的仓库只读思路、零代码拷贝（SPEC §B.6 / ADR-12）。
+第三方依赖登记见 `docs/THIRD-PARTY.md`。
