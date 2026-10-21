@@ -8,6 +8,18 @@
 > 技术栈：Vue 3 + Vite + TypeScript · 许可证 MIT · 开源仓库
 > <https://github.com/jun838480981/decoration-studio>
 
+## 🔗 在线演示
+
+**<https://decoration-studio.netlify.app/>**
+
+无需安装，浏览器直接打开即可使用（推荐 Chrome / Edge 最新版）。
+所有数据保存在**你自己的浏览器本地**，不会上传服务器。
+
+[![在线演示](docs/images/01-overview-2d.jpg)](https://decoration-studio.netlify.app/)
+
+> 线上部署验证（8/8 通过）：首屏可达、2D 图元 591 个、主题令牌注入、
+> 3D 场景 canvas 非空、亮点入口齐全、命令面板 38 项、CSV 导出真实下载、中英切换生效。
+
 ---
 
 ## 目录
@@ -717,6 +729,37 @@ decoration-studio/
 - Node `^20.19.0 || >=22.12.0`
 - pnpm（`corepack enable` 可启用）
 - 浏览器验证脚本需要本机 Chrome
+
+### 部署
+
+本项目是**纯静态站点**（无后端、无数据库），构建产物可直接托管到任意静态服务器。
+
+**构建**：
+
+```bash
+pnpm build        # 产物在 dist/
+```
+
+**关键配置**：`vite.config.ts` 的 `base: './'` 使用**相对路径**，
+因此产物可放在任意子路径下（如 `https://example.com/decoration/`），无需改配置。
+
+**当前线上部署**：Netlify —— <https://decoration-studio.netlify.app/>
+
+| 部署方式 | 步骤 |
+| --- | --- |
+| **Netlify**（当前） | 连接 Git 仓库，Build command `pnpm build`，Publish directory `dist` |
+| **Vercel** | 同上，Framework 选 Vite |
+| **GitHub Pages** | 推 `dist/` 到 `gh-pages` 分支（`base: './'` 已适配子路径） |
+| **自建 Nginx** | 把 `dist/` 内容放到站点根目录即可 |
+
+> **SPA 回退**：本应用是单页应用但**只有根路由**（无 vue-router），
+> 因此不需要配置 `_redirects` / `try_files` 回退规则，任何路径都直接返回 `index.html` 即可。
+
+**部署后验证**（可选，用本机 Chrome 测真实公网地址）：
+
+```bash
+node .tools/verify-live.cjs     # 8 项：首屏/2D/主题/3D/入口/命令面板/CSV/语言
+```
 
 ### 许可证
 
