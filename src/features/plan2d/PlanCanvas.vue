@@ -77,6 +77,24 @@ function hitOf(target: EventTarget | null): StageHit {
   };
 }
 
+/**
+ * 键盘选中家具（无障碍）。
+ *
+ * 家具 `<g>` 现在带 `tabindex="0"` + `role="button"`，可用 Tab 遍历到，
+ * 但「聚焦」不等于「选中」——还需要 Enter/Space 把焦点转成 `ui.selection`。
+ * 选中之后，`useShortcuts` 里已有的方向键移动 / R 旋转 / Delete 删除才会生效，
+ * 键盘操作链路才算闭合（此前只有后半段，没有入口）。
+ */
+function onStageKeydown(event: KeyboardEvent): void {
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  const furnId = hitOf(event.target).furnId;
+  if (!furnId) return;
+  event.preventDefault();
+  ui.select({ kind: 'furn', id: furnId });
+  // 与鼠标点击保持一致：选中后切到选择工具，避免在测量/拆改态下误操作
+  if (ui.tool !== 'select') ui.setTool('select');
+}
+
 const interaction = useStageInteraction({
   svg: svgEl,
   hitOf,
@@ -143,6 +161,7 @@ void layout;
     preserveAspectRatio="xMinYMin meet"
     role="application"
     aria-label="2D 平面图"
+    @keydown="onStageKeydown"
   >
     <DefsLayer />
     <GridLayer />

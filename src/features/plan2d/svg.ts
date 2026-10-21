@@ -428,9 +428,14 @@ export function furnitureSvg(furniture: readonly Furniture[], ctx: FurniturePain
             'text-secondary',
           )}" opacity=".8" pointer-events="none">${esc(ctx.nameOf(f.name))}</text>`
         : '';
-      return `<g class="furn" data-fid="${esc(f.id)}" transform="translate(${f.cx} ${f.cy}) rotate(${
-        f.rot
-      })">${furnSVG(f.type, f.w, f.d, f.color)}${label}</g>`;
+      return `<g class="furn" data-fid="${esc(f.id)}" tabindex="0" role="button" aria-label="${esc(
+        ctx.nameOf(f.name),
+      )}" transform="translate(${f.cx} ${f.cy}) rotate(${f.rot})">${furnSVG(
+        f.type,
+        f.w,
+        f.d,
+        f.color,
+      )}${label}</g>`;
     })
     .join('');
 }

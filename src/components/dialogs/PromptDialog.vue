@@ -10,11 +10,20 @@
  */
 import { useEventListener } from '@vueuse/core';
 import { computed, nextTick, ref, watch } from 'vue';
+import { useFocusTrap } from '@/composables/useFocusTrap';
 import { promptQueue, settlePrompt } from './prompt';
 
 const current = computed(() => promptQueue[0] ?? null);
 const draft = ref('');
 const inputEl = ref<HTMLInputElement | null>(null);
+const dialogBox = ref<HTMLElement | null>(null);
+
+/**
+ * 焦点陷阱：`role="dialog"` + `aria-modal="true"` 必须配真实的 Tab 循环，
+ * 否则键盘用户按 Tab 会跑到背后页面上（模态语义失效）。
+ * 这里 `active` 跟随队列是否有待处理项（组件常驻挂载，靠 `v-if` 控制内容）。
+ */
+useFocusTrap(dialogBox, () => current.value !== null);
 
 watch(
   current,
@@ -45,7 +54,7 @@ useEventListener(document, 'keydown', (event: KeyboardEvent) => {
 
 <template>
   <div v-if="current" class="overlay" role="presentation" @pointerdown.self="settlePrompt(null)">
-    <div class="dialog" role="dialog" aria-modal="true" :aria-label="current.title ?? '输入'">
+    <div ref="dialogBox" class="dialog" role="dialog" aria-modal="true" :aria-label="current.title ?? '输入'">
       <h3 class="dialog__title">{{ current.title ?? '输入' }}</h3>
       <input
         ref="inputEl"

@@ -16,6 +16,7 @@ import { useToastStore } from '@/stores/toast';
 import { useUiStore } from '@/stores/ui';
 import { useTheme } from '@/theme/useTheme';
 import { useAppLang } from '@/composables/useAppLang';
+import { useFocusTrap } from '@/composables/useFocusTrap';
 import { nameIn } from '@/data/names-en';
 import { fmt } from '@/utils/geometry';
 import { downloadText } from '@/features/extras/lib/download';
@@ -32,6 +33,17 @@ const { resolve } = useTheme();
 const lang = useAppLang();
 
 const fileInput = ref<HTMLInputElement | null>(null);
+
+/**
+ * 焦点陷阱（无障碍必需）。
+ *
+ * 本组件以 `v-if` 挂载，组件存在即「已打开」，所以 `active` 恒为 `true`；
+ * `onMounted` 时 `dialogBox` 已就位，陷阱立即生效，卸载时自动解绑（`useEventListener`）。
+ * 此前只有 `role="dialog"` + `aria-modal="true"` 而无陷阱：Tab 会跑到背后的页面上，
+ * 对键盘/读屏用户等于「模态」承诺失效。
+ */
+const dialogBox = ref<HTMLElement | null>(null);
+useFocusTrap(dialogBox, () => true);
 
 interface CardModel {
   id: string;
@@ -135,7 +147,7 @@ void ui;
 
 <template>
   <div class="modal" role="presentation" @pointerdown.self="close">
-    <div class="modal__box" role="dialog" aria-modal="true" aria-label="户型库">
+    <div ref="dialogBox" class="modal__box" role="dialog" aria-modal="true" aria-label="户型库" @keydown.esc="close">
       <header class="modal__head">
         <h3>户型库</h3>
         <button type="button" class="btn" title="关闭" @click="close">✕</button>

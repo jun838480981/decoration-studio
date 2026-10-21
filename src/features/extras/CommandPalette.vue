@@ -19,6 +19,7 @@ import { usePlanStore } from '@/stores/plan';
 import { useTheme } from '@/theme/useTheme';
 import { useUiStore } from '@/stores/ui';
 import { stageSize } from '@/composables/useResizeFit';
+import { useFocusTrap } from '@/composables/useFocusTrap';
 import { getScene3DApi } from '@/utils/scenePort';
 import { filterCommands, groupLabelKey, paletteConflicts, type CommandSpec } from './lib/commands';
 import { useExtrasActions } from './useExtrasActions';
@@ -68,6 +69,14 @@ const query = ref('');
 const activeIndex = ref(0);
 const inputRef = ref<HTMLInputElement | null>(null);
 const listRef = ref<HTMLElement | null>(null);
+const paletteBox = ref<HTMLElement | null>(null);
+
+/**
+ * 焦点陷阱：命令面板是模态（`role="dialog"` + `aria-modal="true"`），
+ * 必须把 Tab 限制在面板内，否则键盘用户会跑到背后页面上。
+ * `active` 跟随开合状态；关闭时自动解绑（`useEventListener`）并归还焦点。
+ */
+useFocusTrap(paletteBox, () => open.value);
 
 /** 过滤后的命令（`lib/commands.ts` 的纯函数；标签命中 > id > 关键词） */
 const filtered = computed(() => filterCommands(query.value, { translate: t.value }));
@@ -318,7 +327,7 @@ defineExpose({ show, hide, toggle, open });
 
 <template>
   <div v-if="open" class="dsx-palette-backdrop" data-print-hide @click.self="hide">
-    <div class="dsx-palette" role="dialog" aria-modal="true" :aria-label="t('palette.title')">
+    <div ref="paletteBox" class="dsx-palette" role="dialog" aria-modal="true" :aria-label="t('palette.title')">
       <input
         ref="inputRef"
         v-model="query"
