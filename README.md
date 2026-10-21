@@ -666,6 +666,7 @@ A：点顶栏「EN / 中文」按钮切换。
 | 文档 | 内容 |
 | --- | --- |
 | [`docs/ORIGIN.md`](docs/ORIGIN.md) | **项目来源**：上游仓库核实、与本地源文件的关系、使用目的、许可证合规、功能差异 |
+| [`docs/COMPARISON.md`](docs/COMPARISON.md) | **对比上游的新增功能与优化清单**（规模、功能、架构、配色、工程化、无障碍、性能） |
 | [`docs/SPEC.md`](docs/SPEC.md) | **施工图**：类型/store 冻结契约、主题令牌表、2D↔3D 接口、依赖清单 |
 | [`docs/ORIGINAL-FEATURES.md`](docs/ORIGINAL-FEATURES.md) | 原 `装修设计.html` 的逐项功能盘点（带行号证据） |
 | [`docs/MIGRATION.md`](docs/MIGRATION.md) | 原功能 → 新模块的完整对照表 |
