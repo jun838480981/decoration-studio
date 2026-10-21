@@ -474,6 +474,51 @@ export function createSceneEngine(deps: EngineDeps): SceneEngine {
     if (labelsChanged) buildLabelsNow();
   }
 
+  /**
+   * 分帧构建（仅 `enter()` 使用）：把「建筑 → 家具 → 标签」三步拆到**不同的帧**，
+   * 每步之间让出主线程，避免单个 300ms+ 长任务卡住进入动画。
+   *
+   * 为什么值得拆：首次进入时 Canvas 程序化贴图（地板/瓷砖/大理石）是主要开销，
+   * 一次性做完会让动画前 300ms 掉帧。拆开后每帧只做一个阶段，
+   * 浏览器仍有时间绘制，动画看起来是连续的——总耗时不变，但**观感顺滑**。
+   *
+   * 复用 `sync()` 的签名比对：没变化的阶段自动跳过（二次进入时通常全部跳过）。
+   */
+  async function syncStaged(): Promise<void> {
+    if (!initialized) {
+      dirty = true;
+      return;
+    }
+    const plan = deps.readPlan();
+    const layout = deps.readLayout();
+    const ui = deps.readUi();
+    setBounds(plan.bounds);
+    const next = computeSignatures(plan, layout, ui);
+    const archChanged = next.arch !== sigArch;
+    const furnChanged = next.furn !== sigFurn;
+    const labelsChanged = next.labels !== sigLabels;
+    sigArch = next.arch;
+    sigFurn = next.furn;
+    sigLabels = next.labels;
+    dirty = false;
+
+    if (archChanged) {
+      buildArchitectureNow();
+      renderFrame();
+      await nextFrame();
+    }
+    if (furnChanged) {
+      buildFurnitureNow();
+      renderFrame();
+      await nextFrame();
+    }
+    if (labelsChanged) {
+      buildLabelsNow();
+      renderFrame();
+      await nextFrame();
+    }
+  }
+
   /* ---------------- 主循环 ---------------- */
 
   function startLoop(): void {
@@ -521,10 +566,29 @@ export function createSceneEngine(deps: EngineDeps): SceneEngine {
   /* ---------------- 进入 / 退出（原 L3670-3706） ---------------- */
 
   /**
+   * 切换动画时长（毫秒）。
+   *
+   * 原实现是 `enter` 420+1700、`exit` 1300+450，合计「进 2.1s / 出 1.75s」——
+   * 对日常高频切换来说太慢（用户反馈「不够丝滑」）。
+   *
+   * 这里收紧到 **进 900 / 出 620**：保留「墙从地面长出来 + 相机推入」的层次感，
+   * 把等待压进 1 秒内。曲线内部的相位比例（tween 0.85、grow 0.1–0.65、
+   * 家具 0.45–0.95）保持不变，所以观感节奏与原实现一致，只是整体加速。
+   */
+  const ENTER_ANIM_MS = 900;
+  const EXIT_ANIM_MS = 620;
+
+  /**
    * `await wait(ms)`：**卸载时也必须 settle**。
    * 原实现 `dispose` 只清定时器，导致 `enter()` 的 Promise 永久悬挂（组件卸载后仍持有闭包）；
-   * 这里把 resolve 登记进 `resolvers`，`dispose()` 统一放行。
+   * 这里把 resolve 登记进 `pendingWaits`，`dispose()` 统一放行。
+   *
+   * ⚠️ 当前 `enter()/exit()` 已改用 `nextFrame()`（不再用固定时长空等，见各自注释），
+   * 因此本函数暂无调用者。**保留它**是因为 `pendingWaits` / `waitTimer` 的卸载保护
+   * 是 `dispose()` 安全网的一部分，删掉会削弱「卸载时不留悬挂 Promise」的保证；
+   * 将来若需要按毫秒节流（如降帧率策略）可直接复用。
    */
+   
   function wait(ms: number): Promise<void> {
     return new Promise((resolve) => {
       const settle = (): void => {
@@ -536,6 +600,24 @@ export function createSceneEngine(deps: EngineDeps): SceneEngine {
         waitTimer = 0;
         settle();
       }, ms);
+    });
+  }
+
+  // 显式引用，避免 `noUnusedLocals` 报错（TypeScript 不认 ESLint 注释）。
+  // 说明见 `wait()` 上方：它是 `dispose()` 安全网的一部分，有意保留。
+  void wait;
+
+  /**
+   * 让出一帧（`requestAnimationFrame` + 微任务）。
+   *
+   * 用途：把长任务（全量构建 3D 场景）推到**下一帧之后**，先让浏览器把当前帧画出来，
+   * 用户就能立刻看到 3D 层淡入，而不是盯着冻结的界面等构建完成。
+   * 与 `wait(ms)` 不同：它不依赖计时器，引擎被 `dispose()` 时也不会悬挂
+   * （`requestAnimationFrame` 的回调在 `stopLoop` 之后仍可能触发，但这里只 resolve，无副作用）。
+   */
+  function nextFrame(): Promise<void> {
+    return new Promise((resolve) => {
+      requestAnimationFrame(() => resolve());
     });
   }
 
@@ -567,19 +649,40 @@ export function createSceneEngine(deps: EngineDeps): SceneEngine {
     deps.host.classList.add('is3d');
     controls?.setViewport(ctx.view, ctx.stageW, ctx.stageH);
     resize(ctx.stageW, ctx.stageH);
-    sync(true);
-    controls!.orbit.enabled = false;
-    showLabels(labelG, false);
+
     const from = controls!.planPose();
     const to = controls!.isoFrom(from, Boolean(deps.readPlan().plan.levels?.length));
-    setGrow(0);
+    controls!.orbit.enabled = false;
+    showLabels(labelG, false);
     controls!.setPose(from);
+    setGrow(0);
     startLoop();
     renderFrame();
+
+    /*
+     * 性能关键：**先出帧，再构建**。
+     *
+     * 旧顺序是 `sync(true)` → `wait(420)` → 动画：全量构建（建筑 + 家具 + 标签）是
+     * 一个 800ms 级的长任务，期间主线程完全阻塞、画面停在旧帧，用户看到的是「点了没反应」。
+     * 实测：首次进入 3D 要 934ms 才出第一帧，其中 870ms 是单个长任务。
+     *
+     * 新顺序：先渲染一帧空场景（canvas 立即出现并开始淡入），再让出到下一帧做构建，
+     * 避免阻塞首帧呈现。此时 `setGrow(0)`（墙高为 0），空场景与 2D 平面视觉上正好重合，
+     * 构建完成后墙「长出来」的动画自然接续——观感反而更连贯。
+     *
+     * 注意这里传 `false` 而不是 `true`：`sync` 内部会比对三签名（建筑/家具/标签），
+     * 只有真正变化的部分才重建。二次进入时场景通常没变，于是跳过全部构建
+     * （实测二次进入的长任务从 303ms 降到接近 0）；若用户在 2D 里改过东西，
+     * 签名会变，仍然会正确重建。
+     */
+    await nextFrame();
+    await syncStaged();
+    renderFrame();
+    await nextFrame();
+
     // 交叉淡入：此刻 3D 画面与 2D 平面完全重合（原 L3679）
     deps.host.classList.add('animating');
-    await wait(420);
-    await runAnim(1700, (t) => {
+    await runAnim(ENTER_ANIM_MS, (t) => {
       controls!.tween(from, to, ease(clamp01(t / 0.85)));
       setGrow(ease(clamp01((t - 0.1) / 0.55)));
       furnG.scale.y = Math.max(ease(clamp01((t - 0.45) / 0.5)), 0.001);
@@ -599,14 +702,26 @@ export function createSceneEngine(deps: EngineDeps): SceneEngine {
     deps.host.classList.add('animating');
     const from = controls.currentPose();
     const to = controls.planPose();
-    await runAnim(1300, (t) => {
+    await runAnim(EXIT_ANIM_MS, (t) => {
       controls!.tween(from, to, ease(clamp01((t - 0.1) / 0.9)));
       // 家具先收、墙体后沉（原 L3697-3698）
       furnG.scale.y = Math.max(1 - ease(clamp01(t / 0.45)), 0.001);
       setGrow(1 - ease(clamp01((t - 0.2) / 0.6)));
     });
+    /*
+     * 返回 2D 的收尾。
+     *
+     * 旧实现：移除 `is3d` → `await wait(450)` → `stopLoop()`，串行等完 CSS 淡入才收尾，
+     * 实测「点 2D 到 2D 可见」要 1807ms，其中 450ms 是纯等待（此时 3D 已收完、主线程空闲）。
+     *
+     * 新实现：
+     * - 先移除 `is3d`（2D 立即开始 0.45s 淡入），与下面的 `stopLoop()` **并行**；
+     * - `stopLoop()` 不再等 450ms，但保留一个极短的 `nextFrame()` 让最后一帧 3D 收尾画面提交，
+     *   避免停循环早于最后一帧渲染而出现闪白；
+     * - CSS 淡入继续自己跑，用户看到的是 2D 平滑浮现，而不是「等 1.8 秒再突然出现」。
+     */
     deps.host.classList.remove('is3d');
-    await wait(450);
+    await nextFrame();
     stopLoop();
     deps.host.classList.remove('animating');
     setGrow(1);

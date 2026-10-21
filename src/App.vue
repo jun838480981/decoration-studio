@@ -224,13 +224,16 @@ const scaleBar = computed(() => ui.scaleBar);
   inset: 0;
   opacity: 0;
   visibility: hidden;
-  transition: opacity 0.45s ease, visibility 0s linear 0.45s;
+  /* 过渡时长与 3D 引擎的 ENTER_ANIM_MS / EXIT_ANIM_MS 保持同一量级：
+     原先 0.45s 相对 2.1s 的动画显得「前松后紧」，收紧动画后这里也一并加快。 */
+  transition: opacity 0.32s ease, visibility 0s linear 0.32s;
+  will-change: opacity;
 }
 
 .stage__view3d--on {
   opacity: 1;
   visibility: visible;
-  transition: opacity 0.45s ease;
+  transition: opacity 0.32s ease;
 }
 
 .stage__placeholder {
