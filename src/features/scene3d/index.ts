@@ -11,6 +11,8 @@
  * - 主题联动取色只经 `theme/material-palette.ts`（E.8），⛔ 目录内不得出现任何十六进制字面值。
  */
 import { MATERIAL_PALETTES, resolveSceneTheme } from '@/theme/material-palette';
+import { registerViewMount } from '@/composables/useViewMounts';
+import Scene3DComponent from './Scene3D.vue';
 
 export type { Scene3DApi, SceneSignatures, LayoutSlice, PlanSlice, UiSlice } from '@/types/scene3d';
 export { resolveSceneTheme, MATERIAL_PALETTES };
@@ -20,7 +22,21 @@ export { resolveSceneTheme, MATERIAL_PALETTES };
  * ⚠️ 必须以 **`v-show`（而非 `v-if`）常驻挂载**：`ui.setViewMode('3d')` 依赖
  * `utils/scenePort` 里已注册的 API，组件未挂载时会走「3D 模块尚未就绪」分支。
  */
-export { default as Scene3D } from './Scene3D.vue';
+export const Scene3D = Scene3DComponent;
+export { Scene3DComponent };
+
+/**
+ * **自注册到视图挂载位**（SPEC §C.1 / `composables/useViewMounts` 契约）。
+ *
+ * 为什么放在这里：`App.vue` 由 2D 侧一次性装配，若它直接 `import` 3D 组件会破坏
+ * `features/**` 之间不得互相依赖的 B1/B2 边界；而 `Scene3D.vue` 是 `<script setup>`，
+ * 无法在模块顶层写注册语句。因此由**本模块出口**在导入时完成注册，
+ * `main.ts` 只做一次副作用导入（`import('@/features/scene3d')`）。
+ *
+ * ⚠️ 这是真实缺陷修复：此前无人调用 `registerViewMount('scene3d', …)`，
+ * 导致切到 3D 时挂载位永远为空、`<canvas>` 从不创建（实渲染验证 R5/R6 的失败原因）。
+ */
+registerViewMount('scene3d', Scene3DComponent);
 
 /** 引擎工厂与三签名计算（组件外复用 / 单测用；SPEC §F.3） */
 export { computeSignatures, createSceneEngine } from './engine';

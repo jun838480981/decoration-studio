@@ -28,7 +28,11 @@ export default defineConfig({
     port: 4173,
   },
   build: {
-    target: 'es2022',
+    // `es2022` 会让 esbuild 对部分语法做降级转译；在 Windows 上，esbuild 0.28.2 的
+    // `vite:esbuild-transpile` 删除临时文件时偶发 `Access is denied`（文件句柄竞争），
+    // 表现为构建失败但代码本身无错（逐文件转译全部通过）。改用 `esnext` 后不再需要
+    // 语法降级，绕开该路径；现代浏览器目标也符合本项目（Vue3 + WebGL2）的定位。
+    target: 'esnext',
     sourcemap: true,
     chunkSizeWarningLimit: 1500,
   },

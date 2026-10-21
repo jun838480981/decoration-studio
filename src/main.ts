@@ -9,6 +9,7 @@
  *    同时同步 `<meta name="theme-color">`。
  * 4. 载入户型库与当前户型的布置存档（`localStorage`，坏数据由 `fixState` 兜底，ADR-05）。
  * 5. `app.mount('#app')`。
+ * 6. 触发 3D 模块的副作用导入（注册视图挂载位）。
  *
  * ⛔ 不在这里注册全局 `window.View3D` 之类的单例（X3 不保留项）；3D 组件自行经
  *    `utils/scenePort.registerScene3D()` 注册。
@@ -42,3 +43,17 @@ const layoutStore = useLayoutStore();
 layoutStore.loadFor(planStore.plan.id, planStore.level, planStore.isMulti);
 
 app.mount('#app');
+
+/**
+ * 视图挂载位装配（SPEC §C.1 / useViewMounts 契约）。
+ *
+ * `App.vue` 通过 `<component :is="mounts.scene3d">` 渲染 3D 视口，而实现方负责注册。
+ * 注册动作已内聚在 `features/scene3d/index.ts` 的模块顶层（导入即注册），
+ * 这里只需触发该模块的副作用导入，保持 `main.ts` 不直接依赖 3D 内部实现。
+ *
+ * 用**动态导入**而非顶层静态导入：
+ * - 3D 场景（three.js + 程序化建模）体积大（约 600KB），按需加载让首屏更快；
+ * - `useViewMounts` 的注册表是 `shallowReactive`，注册完成后挂载位会自动补渲染
+ *   （见 useViewMounts 注释「注册发生在 main.ts 之后也能补上」）。
+ */
+void import('@/features/scene3d');

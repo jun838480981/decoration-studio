@@ -42,7 +42,17 @@ function featureIsolation(selfDir, forbiddenDirs) {
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'coverage/**', 'node_modules/**', 'playwright-report/**', 'test-results/**'],
+    // `.tools/` 是本地验证脚本目录（已被 .gitignore 忽略、不入库），
+    // 里面是 CommonJS 诊断脚本，不适用项目的 ESM/TS 规则。
+    ignores: [
+      'dist/**',
+      'coverage/**',
+      'node_modules/**',
+      'playwright-report/**',
+      'test-results/**',
+      '.tools/**',
+      '.esbuild-tmp/**',
+    ],
   },
 
   ...tseslint.configs.recommended,
