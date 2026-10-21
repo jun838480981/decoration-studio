@@ -136,6 +136,31 @@ export function createMaterialLibrary(options: MaterialLibraryOptions): Material
   /** `mat(..., path, matchColor)` 的登记项：切主题时就地换色（§E.8 T4） */
   const matched: { material: MeshStandardMaterial; from: string; path: string }[] = [];
 
+  /**
+   * 把 CSS 颜色规范化为 three.js 能正确解析的形式。
+   *
+   * ⚠️ 这是真实缺陷的修复（2026-10-21 实测）：
+   * three.js 的 `Color` **不支持 CSS 现代的空格分隔 hsl 语法** `hsl(H S% L%)`，
+   * 解析失败时它**不报错、静默回退成白色**（`#ffffff`）。
+   *
+   * 而 `furniture/content-colors.ts` 里 60+ 个颜色全用这种写法（为了通过
+   * 「scene3d 内不得出现十六进制字面值」的闸门）。结果：绿植的叶子、土壤、花茎，
+   * 以及花朵、书脊、玩具、家电外壳、钢琴、餐具等**所有装饰色全部变成白色**，
+   * 3D 场景看起来「褪色」。
+   *
+   * 修复方式：在颜色进入 three 的**唯一入口**统一转成 `hsl(H, S%, L%)` 逗号语法
+   * （three 从 r150 起支持该写法）。这样既保留 content-colors 的可读性，
+   * 又不需要改动 60+ 处定义。
+   *
+   * 用正则而非 `new Color().setStyle()`：后者解析失败也不抛错，无法作为校验。
+   */
+  function normalizeColor(color: string): string {
+    const modernHsl = /^hsl\(\s*([\d.]+)(?:deg)?\s+([\d.]+)%\s+([\d.]+)%\s*(?:\/\s*[\d.]+%?\s*)?\)$/i;
+    const m = modernHsl.exec(color.trim());
+    if (m) return `hsl(${m[1]},${m[2]}%,${m[3]}%)`;
+    return color;
+  }
+
   const anisotropy = renderer.capabilities.getMaxAnisotropy();
   const envTex = buildEnvTexture(renderer, palette);
   envK = 1;
@@ -151,22 +176,32 @@ export function createMaterialLibrary(options: MaterialLibraryOptions): Material
   }
 
   function mat(color: string, opts: Record<string, unknown> = {}, path?: string): MeshStandardMaterial {
-    const key = `${color}|${path ?? ''}|${JSON.stringify(opts)}`;
+    const resolved = normalizeColor(color);
+    const key = `${resolved}|${path ?? ''}|${JSON.stringify(opts)}`;
     const cached = cache.get(key);
     if (cached) return cached;
-    const material = new MeshStandardMaterial({ color, roughness: 0.7, ...opts } as MeshStandardMaterialParameters);
+    const material = new MeshStandardMaterial({
+      color: resolved,
+      roughness: 0.7,
+      ...opts,
+    } as MeshStandardMaterialParameters);
     attachEnv(material);
-    if (path) matched.push({ material, from: color, path });
+    if (path) matched.push({ material, from: resolved, path });
     cache.set(key, material);
     owned.push(material);
     return material;
   }
 
   function content(color: string, opts: Record<string, unknown> = {}): MeshStandardMaterial {
-    const key = `content|${color}|${JSON.stringify(opts)}`;
+    const resolved = normalizeColor(color);
+    const key = `content|${resolved}|${JSON.stringify(opts)}`;
     const cached = cache.get(key);
     if (cached) return cached;
-    const material = new MeshStandardMaterial({ color, roughness: 0.96, ...opts } as MeshStandardMaterialParameters);
+    const material = new MeshStandardMaterial({
+      color: resolved,
+      roughness: 0.96,
+      ...opts,
+    } as MeshStandardMaterialParameters);
     attachEnv(material);
     cache.set(key, material);
     contentMaterials.push(material);
